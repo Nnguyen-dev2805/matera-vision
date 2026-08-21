@@ -4,6 +4,9 @@
 
 - [x] Task 1: Choose runtime and scaffold the project
 - [ ] Task 2: Define the data contracts
+  - [x] Task 2.1: Implement core semantic results (`AnswerKey`, `NormalizedAnswer`, `ReviewTask`, `NormalizedPageResult`) and tests
+  - [x] Task 2.2: Implement semantic profile contracts (`OptionDef`, `QuestionDef`, `FormProfile`) and tests
+  - [ ] Task 2.3: Implement Excel schema mapping contracts (`ColumnDef`, `ExcelSchema`) and tests
 
 ## Phase 1: Dataset And Profile Foundation
 
