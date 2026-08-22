@@ -63,9 +63,11 @@ Input:
 Output:
 
 ```text
-selected | unselected | review
-confidence: 0..1
-modelVersion
+selected: bool | None
+resolution_status: "resolved" | "needs_review"
+decision_source: "deterministic" | "classifier" | "human"
+confidence: 0.0..1.0
+modelVersion: str
 ```
 
 The first learned model, if needed, should be a small feature-based classifier such as Random Forest, XGBoost, SVM, or logistic regression. A CNN is a later option when the labeled dataset contains enough variation in handwriting, pens, scans, and mark styles.
@@ -128,11 +130,13 @@ Computer vision must not write Excel columns directly. It should produce a norma
       "questionId": "Q1",
       "optionId": "b",
       "selected": true,
+      "resolution_status": "resolved",
+      "decision_source": "deterministic",
       "confidence": 0.96,
-      "decision": "automatic",
       "evidencePath": "debug/page-001/Q1-b.png"
     }
-  ]
+  ],
+  "review_tasks": []
 }
 ```
 

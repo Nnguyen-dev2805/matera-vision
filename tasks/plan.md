@@ -137,24 +137,55 @@ Runtime and contracts
 - [ ] `ruff check src tests` passes.
 
 ##### Task 3.2: Implement extraction pipeline and CLI
-**Description:** Use `pypdfium2` to parse the PDF, render each page at 300 DPI, and safely write to a `.tmp` directory before atomic promotion to the final output. Implement the `--force` flag.
+**Description:** Use `pypdfium2` to parse the PDF, render each page at 300 DPI, safely write to a `.tmp` directory before atomic promotion to the final output, and expose it via CLI.
 **Acceptance criteria:**
-- [ ] Process computes SHA-256 for source and each PNG.
-- [ ] Without `--force`, fails immediately if output exists.
-- [ ] With `--force`, safely uses `.backup` and `.tmp` for atomic promotion.
-- [ ] Any failure cleans up `.tmp` and raises `ExtractionError`.
+- [ ] Core Logic: Process computes SHA-256 for source and each PNG, and yields `RenderedPage`.
+- [ ] Promotion: Safely uses `.backup` and `.tmp` for atomic replacement on Windows.
+- [ ] CLI: Handles `--input`, `--output`, `--force`, fails immediately if output exists without `--force`.
 **Verification:**
 - [ ] CLI runs via `python -m matera.data.extract`.
 
+###### Task 3.2.1: Core Extraction Logic
+**Description:** Implement `render_pdf_pages()` using `pypdfium2`. It yields `RenderedPage` objects sequentially and computes the source PDF SHA-256.
+
+###### Task 3.2.2: Atomic Promotion
+**Description:** Implement `promote_directory()` to execute the safe backup-and-replace strategy for Windows (`.tmp` to output, saving old output to `.backup` and deleting it upon success).
+
+###### Task 3.2.3: CLI Entrypoint
+**Description:** Implement `main()` using `argparse`. Wire up extraction, writing to a temporary directory, and then atomically promoting it. Handle exceptions and exit non-zero with `ExtractionError` structure.
+
 ##### Task 3.3: Implement comprehensive extraction tests
-**Description:** Validate all edges of the extraction logic.
+**Description:** Validate all edges, failure paths, and immutability guarantees of the extraction pipeline per `SPEC-dataset-tests.md`.
+
+- [ ] `pytest tests/test_extract.py -k "invariant or subprocess"` passes.
+
+###### Task 3.3.2: Implement canonical manifest equivalence test
+**Description:** Test that running extraction with `--force` produces perfectly equivalent output.
 **Acceptance criteria:**
-- [ ] Test reproducing the dataset yields exact matching PNG hashes.
-- [ ] Test failure paths (no force, corrupted).
-- [ ] Test exact canonical manifest equivalence.
-- [ ] Test source PDF hash remains perfectly identical before and after.
+- [ ] Test deserializes both JSON manifests and excludes `generated_at`.
+- [ ] Deep comparison of all other fields matches perfectly.
+- [ ] Test manually calculates SHA-256 of physical PNGs and matches `image_sha256`.
 **Verification:**
-- [ ] `pytest tests/test_extract.py` passes with >=90% coverage on `matera.data`.
+- [ ] `pytest tests/test_extract.py -k "equivalence"` passes.
+
+###### Task 3.3.3: Implement output safety matrix tests
+**Description:** Test all invalid output paths and working directory edge cases.
+**Acceptance criteria:**
+- [ ] Reject output identical to input PDF.
+- [ ] Reject output as parent directory of input PDF.
+- [ ] Reject output inside `data/pdfs/`.
+- [ ] Allow output in non-existent parent directory (creates it).
+- [ ] Test running from repository root vs outside repository root (using mocks to bypass boundary check for fake PDFs).
+**Verification:**
+- [ ] `pytest tests/test_extract.py -k "safety"` passes.
+
+###### Task 3.3.4: Implement promotion rollback and cleanup tests
+**Description:** Ensure temporary files are cleaned up and original outputs are safe when errors occur.
+**Acceptance criteria:**
+- [x] Mock promotion failure: `.tmp` and `.backup` are removed, old output is completely intact, no partial output.
+- [x] Mock render failure: `.tmp` directory is completely removed.
+**Verification:**
+- [x] `pytest tests/test_extract.py -k "cleanup or rollback"` passes with >=90% coverage on `matera.data.extract`.
 
 **Estimated scope:** Small
 

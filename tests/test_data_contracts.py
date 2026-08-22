@@ -56,6 +56,7 @@ def test_render_config_invalid():
     with pytest.raises(ValueError, match="strip_metadata must be True"):
         RenderConfig(300, "RGB", 6, False, False)
 
+
 def test_metadata_info_invalid():
     with pytest.raises(ValueError, match="name must be a non-empty string"):
         RendererInfo("", "1")
@@ -95,11 +96,21 @@ def test_extraction_manifest_invalid():
         ValueError, match="Expected page_number 1, got 2. Pages must be contiguous and sorted."
     ):
         ExtractionManifest(
-            "1", "src", VALID_HASH, 2, (artifact2, artifact), renderer, lib, config, "2026-01-01T00:00:00Z"
+            "1",
+            "src",
+            VALID_HASH,
+            2,
+            (artifact2, artifact),
+            renderer,
+            lib,
+            config,
+            "2026-01-01T00:00:00Z",
         )
 
     with pytest.raises(ValueError, match="generated_at must be a valid ISO-8601 string"):
-        ExtractionManifest("1", "src", VALID_HASH, 1, (artifact,), renderer, lib, config, "not-a-time")
+        ExtractionManifest(
+            "1", "src", VALID_HASH, 1, (artifact,), renderer, lib, config, "not-a-time"
+        )
 
 
 def test_extraction_error():

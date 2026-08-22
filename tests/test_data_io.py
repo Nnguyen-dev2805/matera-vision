@@ -77,10 +77,11 @@ def test_atomic_write_manifest(tmp_path: Path):
     lines = content.splitlines()
     assert '"generated_at":' in lines[1]
 
+
 def test_atomic_write_manifest_overwrite(tmp_path: Path):
     manifest_path = tmp_path / "manifest.json"
     manifest_path.write_text("old")
-    
+
     manifest = ExtractionManifest(
         manifest_version="1",
         source_path="data/pdfs/doc.pdf",
@@ -102,19 +103,21 @@ def test_atomic_write_manifest_overwrite(tmp_path: Path):
         render_config=RenderConfig(300, "RGB", 6, False, True),
         generated_at="2026-01-01T00:00:00Z",
     )
-    
+
     atomic_write_manifest(manifest, manifest_path)
     assert manifest_path.read_text(encoding="utf-8").startswith("{")
 
+
 def test_atomic_write_manifest_cleanup_on_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     import shutil
+
     manifest_path = tmp_path / "manifest.json"
-    
+
     def mock_move(*args, **kwargs):
         raise OSError("Simulated failure")
-        
+
     monkeypatch.setattr(shutil, "move", mock_move)
-    
+
     manifest = ExtractionManifest(
         manifest_version="1",
         source_path="data/pdfs/doc.pdf",
@@ -136,26 +139,28 @@ def test_atomic_write_manifest_cleanup_on_error(tmp_path: Path, monkeypatch: pyt
         render_config=RenderConfig(300, "RGB", 6, False, True),
         generated_at="2026-01-01T00:00:00Z",
     )
-    
+
     with pytest.raises(OSError, match="Simulated failure"):
         atomic_write_manifest(manifest, manifest_path)
-        
+
     # Verify no tmp files left
     assert len(list(tmp_path.glob("*.tmp"))) == 0
 
+
 def test_save_image_lossless_hash(tmp_path: Path):
     import hashlib
+
     out_file = tmp_path / "test_hash.png"
     img = Image.new("RGB", (10, 10), color="white")
-    
+
     save_image_lossless(img, out_file)
-    
+
     # Verify we can hash the file and it doesn't change on re-save
     first_hash = hashlib.sha256(out_file.read_bytes()).hexdigest()
-    
+
     # Save again to same or different path
     out_file2 = tmp_path / "test_hash2.png"
     save_image_lossless(img, out_file2)
-    
+
     second_hash = hashlib.sha256(out_file2.read_bytes()).hexdigest()
     assert first_hash == second_hash

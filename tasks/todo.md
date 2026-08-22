@@ -12,8 +12,15 @@
 
 - [ ] Task 3: Build reproducible page extraction
   - [x] Task 3.1: Implement dataset contracts and IO layer
-  - [ ] Task 3.2: Implement extraction pipeline and CLI
-  - [ ] Task 3.3: Implement comprehensive extraction tests
+  - [x] Task 3.2: Implement extraction pipeline and CLI
+    - [x] Task 3.2.1: Core Extraction Logic
+    - [x] Task 3.2.2: Atomic Promotion
+    - [x] Task 3.2.3: CLI Entrypoint
+  - [x] Task 3.3: Implement comprehensive extraction tests
+    - [x] Task 3.3.1: Implement invariant and basic CLI tests
+    - [x] Task 3.3.2: Implement canonical manifest equivalence test
+    - [x] Task 3.3.3: Implement output safety matrix tests
+    - [x] Task 3.3.4: Implement promotion rollback and cleanup tests
 - [ ] Task 4: Create the first form profile and ROI map
 - [ ] Task 5: Create annotations and the golden dataset
 
