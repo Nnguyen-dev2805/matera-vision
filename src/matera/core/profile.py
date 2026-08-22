@@ -9,6 +9,8 @@ class OptionDef:
     label: str | None = None
 
     def __post_init__(self) -> None:
+        if type(self.option_id) is not str:
+            raise ValueError("option_id must be a string")
         if not self.option_id or not self.option_id.strip():
             raise ValueError("option_id cannot be empty")
         if self.value is not None and type(self.value) is not int:
@@ -25,6 +27,8 @@ class QuestionDef:
     max_selections: int | None = None
 
     def __post_init__(self) -> None:
+        if type(self.question_id) is not str:
+            raise ValueError("question_id must be a string")
         if not self.question_id or not self.question_id.strip():
             raise ValueError("question_id cannot be empty")
 
@@ -38,6 +42,10 @@ class QuestionDef:
 
         if not isinstance(self.options, tuple):
             raise ValueError("options must be a tuple")
+
+        for opt in self.options:
+            if not isinstance(opt, OptionDef):
+                raise ValueError("All elements in options must be instances of OptionDef")
 
         if not self.options:
             raise ValueError("options cannot be empty")
@@ -91,6 +99,11 @@ class FormProfile:
     questions: tuple[QuestionDef, ...]
 
     def __post_init__(self) -> None:
+        if type(self.form_id) is not str:
+            raise ValueError("form_id must be a string")
+        if type(self.form_version) is not str:
+            raise ValueError("form_version must be a string")
+
         if not self.form_id or not self.form_id.strip():
             raise ValueError("form_id cannot be empty")
         if not self.form_version or not self.form_version.strip():
@@ -98,6 +111,10 @@ class FormProfile:
 
         if not isinstance(self.questions, tuple):
             raise ValueError("questions must be a tuple")
+
+        for q in self.questions:
+            if not isinstance(q, QuestionDef):
+                raise ValueError("All elements in questions must be instances of QuestionDef")
 
         if not self.questions:
             raise ValueError("questions cannot be empty")

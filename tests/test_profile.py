@@ -13,6 +13,11 @@ def test_option_def_empty_id():
         OptionDef("  ", 1)
 
 
+def test_option_def_invalid_types():
+    with pytest.raises(ValueError, match="option_id must be a string"):
+        OptionDef(1, 1)  # type: ignore
+
+
 def test_option_def_invalid_value_type():
     with pytest.raises(ValueError, match="value must be an int or None"):
         OptionDef("A", True)  # type: ignore
@@ -35,13 +40,16 @@ def test_question_def_valid_single_select():
 
 def test_question_def_invalid_response_type():
     opt1 = OptionDef("A", 1)
-    with pytest.raises(ValueError, match="Invalid response_type unknown"):
-        QuestionDef(
-            question_id="Q1",
-            response_type="unknown",  # type: ignore
-            mark_strategy="circle",
-            options=(opt1,),
-        )
+    with pytest.raises(ValueError, match="Invalid response_type"):
+        QuestionDef("Q1", "unknown", "circle", (opt1,))  # type: ignore
+
+
+def test_question_def_invalid_types():
+    opt1 = OptionDef("A", 1)
+    with pytest.raises(ValueError, match="question_id must be a string"):
+        QuestionDef(1, "single_select", "circle", (opt1,))  # type: ignore
+    with pytest.raises(ValueError, match="All elements in options must be instances of OptionDef"):
+        QuestionDef("Q1", "single_select", "circle", ("not_an_option",))  # type: ignore
 
 
 def test_question_def_invalid_mark_strategy():
@@ -142,10 +150,25 @@ def test_form_profile_valid():
 
 
 def test_form_profile_empty_identifiers():
+    opt = OptionDef("A", 1)
+    q = QuestionDef("Q1", "single_select", "circle", (opt,), max_selections=1)
     with pytest.raises(ValueError, match="form_id cannot be empty"):
-        FormProfile(" ", "v1", ())
+        FormProfile(" ", "v1", (q,))
     with pytest.raises(ValueError, match="form_version cannot be empty"):
-        FormProfile("form1", "", ())
+        FormProfile("form1", " ", (q,))
+
+
+def test_form_profile_invalid_types():
+    opt = OptionDef("A", 1)
+    q = QuestionDef("Q1", "single_select", "circle", (opt,), max_selections=1)
+    with pytest.raises(ValueError, match="form_id must be a string"):
+        FormProfile(1, "v1", (q,))  # type: ignore
+    with pytest.raises(ValueError, match="form_version must be a string"):
+        FormProfile("form1", 1, (q,))  # type: ignore
+    with pytest.raises(
+        ValueError, match="All elements in questions must be instances of QuestionDef"
+    ):
+        FormProfile("form1", "v1", ("not_a_question",))  # type: ignore
 
 
 def test_form_profile_duplicate_question_id():
