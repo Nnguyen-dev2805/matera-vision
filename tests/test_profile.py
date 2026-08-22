@@ -344,3 +344,147 @@ def test_form_profile_mutable_questions_rejected():
     questions_list = [q1]
     with pytest.raises(ValueError, match="questions must be a tuple"):
         FormProfile("form1", "v1", questions_list)  # type: ignore
+
+
+from pathlib import Path
+
+from matera.core.errors import ProfileValidationError
+from matera.core.profile import load_semantic_profile
+
+
+def test_load_semantic_profile_valid(tmp_path: Path):
+    json_data = """{
+        "form_id": "matera-pre",
+        "form_version": "v1",
+        "questions": [
+            {
+                "question_id": "Q1",
+                "response_type": "single_select",
+                "mark_strategy": "checkbox",
+                "options": ["a", "b"]
+            },
+            {
+                "question_id": "Q2",
+                "response_type": "rating",
+                "mark_strategy": "rating",
+                "options": [
+                    {"option_id": "r1", "value": 1, "label": "Poor"},
+                    {"option_id": "r2", "value": 2, "label": "Good"}
+                ],
+                "min_selections": 1,
+                "max_selections": 1
+            }
+        ]
+    }"""
+    p = tmp_path / "valid.json"
+    p.write_text(json_data, encoding="utf-8")
+
+    profile = load_semantic_profile(p)
+    assert profile.form_id == "matera-pre"
+    assert profile.form_version == "v1"
+    assert len(profile.questions) == 2
+
+    q1 = profile.questions[0]
+    assert q1.question_id == "Q1"
+    assert len(q1.options) == 2
+    assert q1.options[0].option_id == "a"
+    assert q1.options[0].value is None
+
+    q2 = profile.questions[1]
+    assert q2.question_id == "Q2"
+    assert len(q2.options) == 2
+    assert q2.options[0].value == 1
+
+
+def test_load_semantic_profile_missing_file(tmp_path: Path):
+    with pytest.raises(ProfileValidationError) as exc:
+        load_semantic_profile(tmp_path / "nonexistent.json")
+    assert exc.value.error_code == "FILE_NOT_FOUND"
+
+
+def test_load_semantic_profile_invalid_json(tmp_path: Path):
+    p = tmp_path / "bad.json"
+    p.write_text("{bad json")
+    with pytest.raises(ProfileValidationError) as exc:
+        load_semantic_profile(p)
+    assert exc.value.error_code == "INVALID_JSON"
+
+
+def test_load_semantic_profile_invalid_root(tmp_path: Path):
+    p = tmp_path / "bad.json"
+    p.write_text("[]")
+    with pytest.raises(ProfileValidationError) as exc:
+        load_semantic_profile(p)
+    assert exc.value.error_code == "INVALID_ROOT"
+
+
+def test_load_semantic_profile_missing_fields(tmp_path: Path):
+    p = tmp_path / "bad.json"
+
+    # Missing form_id
+    p.write_text('{"form_version": "v1", "questions": []}')
+    with pytest.raises(ProfileValidationError) as exc:
+        load_semantic_profile(p)
+    assert exc.value.field_path == "form_id"
+    assert exc.value.error_code == "INVALID_TYPE"
+
+    # Missing questions
+    p.write_text('{"form_id": "f", "form_version": "v1"}')
+    with pytest.raises(ProfileValidationError) as exc:
+        load_semantic_profile(p)
+    assert exc.value.field_path == "questions"
+    assert exc.value.error_code == "INVALID_TYPE"
+
+    # Empty questions
+    p.write_text('{"form_id": "f", "form_version": "v1", "questions": []}')
+    with pytest.raises(ProfileValidationError) as exc:
+        load_semantic_profile(p)
+    assert exc.value.field_path == "questions"
+    assert exc.value.error_code == "EMPTY_LIST"
+
+
+def test_load_semantic_profile_invalid_question(tmp_path: Path):
+    p = tmp_path / "bad.json"
+
+    # Missing question_id
+    p.write_text('{"form_id": "f", "form_version": "v1", "questions": [{}]}')
+    with pytest.raises(ProfileValidationError) as exc:
+        load_semantic_profile(p)
+    assert exc.value.field_path == "questions[0].question_id"
+
+    # Duplicate question_id
+    p.write_text("""{
+        "form_id": "f", "form_version": "v1", 
+        "questions": [
+            {"question_id": "Q1", "response_type": "single_select", "mark_strategy": "checkbox", "options": ["a"]},
+            {"question_id": "Q1", "response_type": "single_select", "mark_strategy": "checkbox", "options": ["a"]}
+        ]
+    }""")
+    with pytest.raises(ProfileValidationError) as exc:
+        load_semantic_profile(p)
+    assert exc.value.field_path == "questions[1].question_id"
+    assert exc.value.error_code == "DUPLICATE_ID"
+
+    # Empty options
+    p.write_text("""{
+        "form_id": "f", "form_version": "v1", 
+        "questions": [
+            {"question_id": "Q1", "response_type": "single_select", "mark_strategy": "checkbox", "options": []}
+        ]
+    }""")
+    with pytest.raises(ProfileValidationError) as exc:
+        load_semantic_profile(p)
+    assert exc.value.field_path == "questions[0].options"
+    assert exc.value.error_code == "EMPTY_LIST"
+
+    # Duplicate options
+    p.write_text("""{
+        "form_id": "f", "form_version": "v1", 
+        "questions": [
+            {"question_id": "Q1", "response_type": "single_select", "mark_strategy": "checkbox", "options": ["a", "a"]}
+        ]
+    }""")
+    with pytest.raises(ProfileValidationError) as exc:
+        load_semantic_profile(p)
+    assert exc.value.field_path == "questions[0].options[1]"
+    assert exc.value.error_code == "DUPLICATE_ID"

@@ -1,5 +1,8 @@
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
+
+from matera.core.errors import ProfileValidationError
 
 
 @dataclass(frozen=True)
@@ -124,3 +127,142 @@ class FormProfile:
             if q.question_id in seen_ids:
                 raise ValueError(f"Duplicate question_id found: {q.question_id}")
             seen_ids.add(q.question_id)
+
+
+def _raise_error(path: str, field: str, code: str, reason: str) -> None:
+    raise ProfileValidationError(path, field, code, reason)
+
+
+def load_semantic_profile(path: Path) -> FormProfile:
+    """Loads and strictly validates a semantic profile JSON."""
+    import json
+
+    path_str = str(path)
+    if not path.exists():
+        _raise_error(path_str, "", "FILE_NOT_FOUND", "Profile file does not exist")
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        _raise_error(path_str, "", "INVALID_JSON", str(e))
+
+    if not isinstance(data, dict):
+        _raise_error(path_str, "", "INVALID_ROOT", "Root must be a JSON object")
+
+    form_id = data.get("form_id")
+    if not isinstance(form_id, str) or not form_id:
+        _raise_error(path_str, "form_id", "INVALID_TYPE", "must be a non-empty string")
+
+    form_version = data.get("form_version")
+    if not isinstance(form_version, str) or not form_version:
+        _raise_error(path_str, "form_version", "INVALID_TYPE", "must be a non-empty string")
+
+    raw_questions = data.get("questions")
+
+    if not isinstance(raw_questions, list):
+        _raise_error(path_str, "questions", "INVALID_TYPE", "must be a list")
+
+    if not raw_questions:
+        _raise_error(path_str, "questions", "EMPTY_LIST", "Questions cannot be empty")
+
+    seen_q_ids: set[str] = set()
+    questions = []
+    for i, q in enumerate(raw_questions):
+        field_q = f"questions[{i}]"
+        if not isinstance(q, dict):
+            _raise_error(path_str, field_q, "INVALID_TYPE", "must be an object")
+
+        q_id = q.get("question_id")
+        if not isinstance(q_id, str) or not q_id:
+            _raise_error(
+                path_str, f"{field_q}.question_id", "INVALID_TYPE", "must be a non-empty string"
+            )
+
+        if q_id in seen_q_ids:
+            _raise_error(
+                path_str, f"{field_q}.question_id", "DUPLICATE_ID", "Question ID must be unique"
+            )
+        seen_q_ids.add(q_id)
+
+        resp_type = q.get("response_type")
+        if not isinstance(resp_type, str) or not resp_type:
+            _raise_error(
+                path_str, f"{field_q}.response_type", "INVALID_TYPE", "must be a non-empty string"
+            )
+
+        mark_strat = q.get("mark_strategy")
+        if not isinstance(mark_strat, str) or not mark_strat:
+            _raise_error(
+                path_str, f"{field_q}.mark_strategy", "INVALID_TYPE", "must be a non-empty string"
+            )
+
+        raw_options = q.get("options")
+        if not isinstance(raw_options, list):
+            _raise_error(path_str, f"{field_q}.options", "INVALID_TYPE", "must be a list")
+
+        if not raw_options:
+            _raise_error(path_str, f"{field_q}.options", "EMPTY_LIST", "Options cannot be empty")
+
+        options = []
+        seen_opt_ids: set[str] = set()
+        for j, opt in enumerate(raw_options):
+            if isinstance(opt, str):
+                o_id = opt
+                try:
+                    options.append(OptionDef(option_id=o_id))
+                except ValueError as e:
+                    _raise_error(path_str, f"{field_q}.options[{j}]", "INVALID_FIELD", str(e))
+            elif isinstance(opt, dict):
+                o_id = opt.get("option_id")
+                try:
+                    options.append(
+                        OptionDef(
+                            option_id=o_id,
+                            value=opt.get("value"),
+                            label=opt.get("label"),
+                        )
+                    )
+                except ValueError as e:
+                    _raise_error(path_str, f"{field_q}.options[{j}]", "INVALID_FIELD", str(e))
+            else:
+                _raise_error(
+                    path_str,
+                    f"{field_q}.options[{j}]",
+                    "INVALID_TYPE",
+                    "must be a string or object",
+                )
+
+            if o_id in seen_opt_ids:
+                _raise_error(
+                    path_str,
+                    f"{field_q}.options[{j}]",
+                    "DUPLICATE_ID",
+                    "Option ID must be unique within question",
+                )
+            seen_opt_ids.add(o_id)
+        try:
+            kwargs = {
+                "question_id": q_id,
+                "response_type": resp_type,
+                "mark_strategy": mark_strat,
+                "options": tuple(options),
+            }
+            if "min_selections" in q:
+                kwargs["min_selections"] = q["min_selections"]
+            if "max_selections" in q:
+                kwargs["max_selections"] = q["max_selections"]
+            elif resp_type == "single_select":
+                kwargs["max_selections"] = 1
+            elif resp_type == "rating":
+                kwargs["max_selections"] = 1
+                if "min_selections" not in q:
+                    kwargs["min_selections"] = 1
+
+            questions.append(QuestionDef(**kwargs))
+        except ValueError as e:
+            _raise_error(path_str, field_q, "INVALID_FIELD", str(e))
+
+    try:
+        return FormProfile(form_id=form_id, form_version=form_version, questions=tuple(questions))
+    except ValueError as e:
+        _raise_error(path_str, "", "INVALID_FIELD", str(e))
