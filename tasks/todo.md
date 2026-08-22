@@ -6,11 +6,14 @@
 - [ ] Task 2: Define the data contracts
   - [x] Task 2.1: Implement core semantic results (`AnswerKey`, `NormalizedAnswer`, `ReviewTask`, `NormalizedPageResult`) and tests
   - [x] Task 2.2: Implement semantic profile contracts (`OptionDef`, `QuestionDef`, `FormProfile`) and tests
-  - [ ] Task 2.3: Implement Excel schema mapping contracts (`ColumnDef`, `ExcelSchema`) and tests
+  - [x] Task 2.3: Implement Excel schema mapping contracts (`ColumnDef`, `ExcelSchema`) and tests
 
 ## Phase 1: Dataset And Profile Foundation
 
 - [ ] Task 3: Build reproducible page extraction
+  - [x] Task 3.1: Implement dataset contracts and IO layer
+  - [ ] Task 3.2: Implement extraction pipeline and CLI
+  - [ ] Task 3.3: Implement comprehensive extraction tests
 - [ ] Task 4: Create the first form profile and ROI map
 - [ ] Task 5: Create annotations and the golden dataset
 

@@ -76,7 +76,9 @@ class ExcelSchema:
 
     @classmethod
     def from_profile(cls, profile: "FormProfile") -> "ExcelSchema":
-        """Creates an ExcelSchema that strictly matches the given FormProfile's questions and options."""
+        """
+        Creates an ExcelSchema that strictly matches the given FormProfile's questions and options.
+        """
         columns = []
         for q in profile.questions:
             for opt in q.options:

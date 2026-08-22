@@ -9,7 +9,8 @@ description = "Matera Vision pipeline for PDF questionnaire processing"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    # Will add runtime dependencies like opencv later
+    "pypdfium2==4.30.0",
+    "Pillow==10.3.0",
 ]
 
 [project.optional-dependencies]
@@ -39,4 +40,4 @@ ignore = []
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "--verbose --tb=short --cov=matera.core --cov-fail-under=90"
+addopts = "--verbose --tb=short --cov=matera.core --cov=matera.export --cov=matera.data --cov-fail-under=90"

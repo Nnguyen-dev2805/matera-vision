@@ -112,17 +112,49 @@ Runtime and contracts
 
 **Verification:**
 
-- [ ] Compare extracted page count with the PDF page count.
-- [ ] Inspect representative page images, including page 1.
-- [ ] Run extraction twice and compare checksums or equivalent metadata.
+- [ ] Assert `pdf_page_count == 10`.
+- [ ] Rerun with `--force` produces identical SHA-256 hashes.
 
 **Dependencies:** Task 1
 
 **Files likely touched:**
+- `SPEC-dataset.md`
+- `src/matera/data/contracts.py`
+- `src/matera/data/io.py`
+- `src/matera/data/extract.py`
+- `tests/test_extract.py`
 
-- Page extraction module/script
-- Dataset metadata
-- Derived-data ignore/configuration rules
+**Estimated scope:** Medium
+
+##### Task 3.1: Implement dataset contracts and IO layer
+**Description:** Build the `PageArtifact`, `RenderedPage`, and `ExtractionManifest` contracts. Build the IO layer with atomic write and strict PNG saving constraints (`mode="RGB"`, `compress_level=6`, `optimize=False`).
+**Acceptance criteria:**
+- [ ] Contracts use frozen dataclasses, no `dict`.
+- [ ] `ExtractionError` is defined with `page_number: int | None`.
+- [ ] `save_image_lossless` strips EXIF/ICC and uses fixed compression.
+- [ ] `atomic_write_manifest` enforces `sort_keys=True`.
+**Verification:**
+- [ ] `ruff check src tests` passes.
+
+##### Task 3.2: Implement extraction pipeline and CLI
+**Description:** Use `pypdfium2` to parse the PDF, render each page at 300 DPI, and safely write to a `.tmp` directory before atomic promotion to the final output. Implement the `--force` flag.
+**Acceptance criteria:**
+- [ ] Process computes SHA-256 for source and each PNG.
+- [ ] Without `--force`, fails immediately if output exists.
+- [ ] With `--force`, safely uses `.backup` and `.tmp` for atomic promotion.
+- [ ] Any failure cleans up `.tmp` and raises `ExtractionError`.
+**Verification:**
+- [ ] CLI runs via `python -m matera.data.extract`.
+
+##### Task 3.3: Implement comprehensive extraction tests
+**Description:** Validate all edges of the extraction logic.
+**Acceptance criteria:**
+- [ ] Test reproducing the dataset yields exact matching PNG hashes.
+- [ ] Test failure paths (no force, corrupted).
+- [ ] Test exact canonical manifest equivalence.
+- [ ] Test source PDF hash remains perfectly identical before and after.
+**Verification:**
+- [ ] `pytest tests/test_extract.py` passes with >=90% coverage on `matera.data`.
 
 **Estimated scope:** Small
 

@@ -61,5 +61,7 @@ def test_schema_validate_against_mismatch():
     # Missing column (mismatched schema)
     col = ColumnDef("WRONG_COL", "WRONG", "COL")
     schema_missing = ExcelSchema("matera-pre", "v1", (col,))
-    with pytest.raises(ValueError, match="Columns do not strictly match profile options in mapping or order"):
+    with pytest.raises(
+        ValueError, match="Columns do not strictly match profile options in mapping or order"
+    ):
         schema_missing.validate_against(profile)
