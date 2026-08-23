@@ -270,3 +270,134 @@ def test_route_page_fail_fast():
     ]
     with pytest.raises(ValueError, match="Missing evidence_path in MarkScore for q1.o1"):
         route_page(mark_scores=scores_no_evidence, profile=profile, page_number=1)
+
+
+def test_route_page_exact_boundaries():
+    profile = FormProfile(
+        form_id="test",
+        form_version="v1",
+        questions=(
+            QuestionDef(
+                question_id="q1",
+                response_type="single_select",
+                mark_strategy="circle",
+                options=(
+                    OptionDef(option_id="o1", value=1),
+                    OptionDef(option_id="o2", value=2),
+                ),
+                min_selections=1,
+                max_selections=1
+            ),
+        )
+    )
+
+    from matera.vision.contracts import MarkScore, ROIFeature
+    from pathlib import Path
+    mock_feature = ROIFeature(0.0, 0.0, 0, 0.0, 0.0)
+
+    scores = [
+        MarkScore("q1", "o1", 0.2, "circle", "diff", mock_feature, Path("dummy.png")), # exact low
+        MarkScore("q1", "o2", 0.6, "circle", "diff", mock_feature, Path("dummy.png")), # exact high
+    ]
+
+    config = RoutingConfig(low_threshold=0.2, high_threshold=0.6)
+    result = route_page(mark_scores=scores, profile=profile, page_number=1, config=config)
+
+    a1 = next(a for a in result.answers if a.answer_key.option_id == "o1")
+    # 0.2 is >= low_threshold (0.2). Wait, rule: < low -> false, >= high -> true.
+    # So 0.2 is ambiguous!
+    assert a1.selected is None
+    assert a1.resolution_status == "needs_review"
+
+    a2 = next(a for a in result.answers if a.answer_key.option_id == "o2")
+    assert a2.selected is True
+    assert a2.resolution_status == "resolved"
+
+
+def test_route_page_rating_question():
+    profile = FormProfile(
+        form_id="test",
+        form_version="v1",
+        questions=(
+            QuestionDef(
+                question_id="q1",
+                response_type="rating",
+                mark_strategy="rating",
+                options=(
+                    OptionDef(option_id="o1", value=1),
+                    OptionDef(option_id="o2", value=2),
+                    OptionDef(option_id="o3", value=3),
+                ),
+                min_selections=1,
+                max_selections=1
+            ),
+        )
+    )
+
+    from matera.vision.contracts import MarkScore, ROIFeature
+    from pathlib import Path
+    mock_feature = ROIFeature(0.0, 0.0, 0, 0.0, 0.0)
+
+    # normal case
+    scores = [
+        MarkScore("q1", "o1", 0.1, "rating", "diff", mock_feature, Path("dummy.png")),
+        MarkScore("q1", "o2", 0.8, "rating", "diff", mock_feature, Path("dummy.png")),
+        MarkScore("q1", "o3", 0.1, "rating", "diff", mock_feature, Path("dummy.png")),
+    ]
+
+    config = RoutingConfig(low_threshold=0.2, high_threshold=0.6)
+    result = route_page(mark_scores=scores, profile=profile, page_number=1, config=config)
+
+    assert result.page_status == "resolved"
+    a2 = next(a for a in result.answers if a.answer_key.option_id == "o2")
+    assert a2.selected is True
+
+
+def test_route_page_checkbox_multi_select():
+    profile = FormProfile(
+        form_id="test",
+        form_version="v1",
+        questions=(
+            QuestionDef(
+                question_id="q1",
+                response_type="multi_select",
+                mark_strategy="checkbox",
+                options=(
+                    OptionDef(option_id="o1", value=1),
+                    OptionDef(option_id="o2", value=2),
+                    OptionDef(option_id="o3", value=3),
+                ),
+                min_selections=0,
+                max_selections=3
+            ),
+        )
+    )
+
+    from matera.vision.contracts import MarkScore, ROIFeature
+    from pathlib import Path
+    mock_feature = ROIFeature(0.0, 0.0, 0, 0.0, 0.0)
+
+    # 3 options selected -> should be fine (max=3)
+    scores = [
+        MarkScore("q1", "o1", 0.9, "checkbox", "diff", mock_feature, Path("dummy.png")),
+        MarkScore("q1", "o2", 0.8, "checkbox", "diff", mock_feature, Path("dummy.png")),
+        MarkScore("q1", "o3", 0.9, "checkbox", "diff", mock_feature, Path("dummy.png")),
+    ]
+
+    config = RoutingConfig(low_threshold=0.2, high_threshold=0.6)
+    result = route_page(mark_scores=scores, profile=profile, page_number=1, config=config)
+
+    assert result.page_status == "resolved"
+    for a in result.answers:
+        assert a.selected is True
+
+    # 0 options selected -> should be fine (min=0)
+    scores_zero = [
+        MarkScore("q1", "o1", 0.1, "checkbox", "diff", mock_feature, Path("dummy.png")),
+        MarkScore("q1", "o2", 0.1, "checkbox", "diff", mock_feature, Path("dummy.png")),
+        MarkScore("q1", "o3", 0.1, "checkbox", "diff", mock_feature, Path("dummy.png")),
+    ]
+    result_zero = route_page(mark_scores=scores_zero, profile=profile, page_number=1, config=config)
+    assert result_zero.page_status == "resolved"
+    for a in result_zero.answers:
+        assert a.selected is False

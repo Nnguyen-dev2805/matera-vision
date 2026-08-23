@@ -450,8 +450,8 @@ Runtime and contracts
 ##### Task 8.5: Complete testing and integration
 **Description:** Develop comprehensive unit tests covering all exact boundaries, strategies, and fail-fast scenarios.
 **Acceptance criteria:**
-- Test suite covers all scenarios outlined in the spec's Testing Strategy.
-- Test coverage for `routing.py` is high.
+- [x] Test suite covers all scenarios outlined in the spec's Testing Strategy.
+- [x] Test coverage for `routing.py` is high.
 
 ### Checkpoint: Deterministic Baseline
 
