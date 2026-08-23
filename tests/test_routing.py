@@ -1,8 +1,8 @@
 import pytest
+
+from matera.core.profile import FormProfile, OptionDef, QuestionDef
 from matera.vision.contracts import RoutingConfig
 from matera.vision.routing import route_page
-from matera.core.profile import FormProfile, QuestionDef, OptionDef
-from matera.core.layout import PageLayout
 
 
 def test_routing_config_validation():
@@ -33,22 +33,25 @@ def test_route_page_skeleton():
                 mark_strategy="circle",
                 options=(OptionDef(option_id="o1", value=1),),
                 min_selections=1,
-                max_selections=1
+                max_selections=1,
             ),
-        )
+        ),
     )
-    from matera.vision.contracts import MarkScore, ROIFeature
     from pathlib import Path
+
+    from matera.vision.contracts import MarkScore, ROIFeature
+
     mock_feature = ROIFeature(0.0, 0.0, 0, 0.0, 0.0)
     scores = [
         MarkScore("q1", "o1", 0.1, "circle", "diff", mock_feature, Path("dummy.png")),
     ]
     result = route_page(mark_scores=scores, profile=profile, page_number=1)
-    
+
     assert result.form_id == "test"
     assert result.form_version == "v1"
     assert result.page_number == 1
     assert len(result.answers) == 1
+
 
 def test_route_page_option_level_scoring():
     profile = FormProfile(
@@ -65,13 +68,13 @@ def test_route_page_option_level_scoring():
                     OptionDef(option_id="o3", value=3),
                 ),
                 min_selections=1,
-                max_selections=1
+                max_selections=1,
             ),
-        )
+        ),
     )
 
     from matera.vision.contracts import MarkScore, ROIFeature
-    
+
     mock_feature = ROIFeature(
         dark_pixel_ratio=0.0,
         foreground_area_ratio=0.0,
@@ -84,6 +87,7 @@ def test_route_page_option_level_scoring():
     # 2. high (>= 0.6)
     # 3. ambiguous (0.2 <= score < 0.6)
     from pathlib import Path
+
     scores = [
         MarkScore("q1", "o1", 0.1, "circle", "diff", mock_feature, Path("dummy.png")),
         MarkScore("q1", "o2", 0.8, "circle", "diff", mock_feature, Path("dummy.png")),
@@ -94,7 +98,7 @@ def test_route_page_option_level_scoring():
     result = route_page(mark_scores=scores, profile=profile, page_number=1, config=config)
 
     assert len(result.answers) == 3
-    
+
     a1 = next(a for a in result.answers if a.answer_key.option_id == "o1")
     assert a1.selected is False
     assert a1.resolution_status == "resolved"
@@ -134,15 +138,17 @@ def test_route_page_over_selection():
                     OptionDef(option_id="o2", value=2),
                 ),
                 min_selections=1,
-                max_selections=1
+                max_selections=1,
             ),
-        )
+        ),
     )
 
     from matera.vision.contracts import MarkScore, ROIFeature
+
     mock_feature = ROIFeature(0.0, 0.0, 0, 0.0, 0.0)
 
     from pathlib import Path
+
     scores = [
         MarkScore("q1", "o1", 0.8, "circle", "diff", mock_feature, Path("dummy.png")),
         MarkScore("q1", "o2", 0.9, "circle", "diff", mock_feature, Path("dummy.png")),
@@ -178,16 +184,18 @@ def test_route_page_under_selection():
                     OptionDef(option_id="o2", value=2),
                 ),
                 min_selections=1,
-                max_selections=1
+                max_selections=1,
             ),
-        )
+        ),
     )
 
     from matera.vision.contracts import MarkScore, ROIFeature
+
     mock_feature = ROIFeature(0.0, 0.0, 0, 0.0, 0.0)
 
     # 0 options > 0.6 -> under-selection (min_selections=1)
     from pathlib import Path
+
     scores = [
         MarkScore("q1", "o1", 0.1, "circle", "diff", mock_feature, Path("dummy.png")),
         MarkScore("q1", "o2", 0.15, "circle", "diff", mock_feature, Path("dummy.png")),
@@ -197,7 +205,7 @@ def test_route_page_under_selection():
     result = route_page(mark_scores=scores, profile=profile, page_number=1, config=config)
 
     assert len(result.answers) == 2
-    
+
     a1 = next(a for a in result.answers if a.answer_key.option_id == "o1")
     assert a1.selected is False
     assert a1.resolution_status == "resolved"
@@ -229,13 +237,15 @@ def test_route_page_fail_fast():
                     OptionDef(option_id="o2", value=2),
                 ),
                 min_selections=1,
-                max_selections=1
+                max_selections=1,
             ),
-        )
+        ),
     )
 
-    from matera.vision.contracts import MarkScore, ROIFeature
     from pathlib import Path
+
+    from matera.vision.contracts import MarkScore, ROIFeature
+
     mock_feature = ROIFeature(0.0, 0.0, 0, 0.0, 0.0)
 
     # 1. Missing MarkScore
@@ -271,6 +281,16 @@ def test_route_page_fail_fast():
     with pytest.raises(ValueError, match="Missing evidence_path in MarkScore for q1.o1"):
         route_page(mark_scores=scores_no_evidence, profile=profile, page_number=1)
 
+    # 5. Mark strategy mismatch
+    scores_mismatch = [
+        MarkScore("q1", "o1", 0.1, "checkbox", "diff", mock_feature, Path("dummy.png")),
+        MarkScore("q1", "o2", 0.1, "circle", "diff", mock_feature, Path("dummy.png")),
+    ]
+    with pytest.raises(
+        ValueError, match="Mark strategy mismatch for q1.o1: expected circle, got checkbox"
+    ):
+        route_page(mark_scores=scores_mismatch, profile=profile, page_number=1)
+
 
 def test_route_page_exact_boundaries():
     profile = FormProfile(
@@ -286,18 +306,20 @@ def test_route_page_exact_boundaries():
                     OptionDef(option_id="o2", value=2),
                 ),
                 min_selections=1,
-                max_selections=1
+                max_selections=1,
             ),
-        )
+        ),
     )
 
-    from matera.vision.contracts import MarkScore, ROIFeature
     from pathlib import Path
+
+    from matera.vision.contracts import MarkScore, ROIFeature
+
     mock_feature = ROIFeature(0.0, 0.0, 0, 0.0, 0.0)
 
     scores = [
-        MarkScore("q1", "o1", 0.2, "circle", "diff", mock_feature, Path("dummy.png")), # exact low
-        MarkScore("q1", "o2", 0.6, "circle", "diff", mock_feature, Path("dummy.png")), # exact high
+        MarkScore("q1", "o1", 0.2, "circle", "diff", mock_feature, Path("dummy.png")),  # exact low
+        MarkScore("q1", "o2", 0.6, "circle", "diff", mock_feature, Path("dummy.png")),  # exact high
     ]
 
     config = RoutingConfig(low_threshold=0.2, high_threshold=0.6)
@@ -329,13 +351,15 @@ def test_route_page_rating_question():
                     OptionDef(option_id="o3", value=3),
                 ),
                 min_selections=1,
-                max_selections=1
+                max_selections=1,
             ),
-        )
+        ),
     )
 
-    from matera.vision.contracts import MarkScore, ROIFeature
     from pathlib import Path
+
+    from matera.vision.contracts import MarkScore, ROIFeature
+
     mock_feature = ROIFeature(0.0, 0.0, 0, 0.0, 0.0)
 
     # normal case
@@ -368,13 +392,15 @@ def test_route_page_checkbox_multi_select():
                     OptionDef(option_id="o3", value=3),
                 ),
                 min_selections=0,
-                max_selections=3
+                max_selections=3,
             ),
-        )
+        ),
     )
 
-    from matera.vision.contracts import MarkScore, ROIFeature
     from pathlib import Path
+
+    from matera.vision.contracts import MarkScore, ROIFeature
+
     mock_feature = ROIFeature(0.0, 0.0, 0, 0.0, 0.0)
 
     # 3 options selected -> should be fine (max=3)

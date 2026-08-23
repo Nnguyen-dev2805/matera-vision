@@ -1,8 +1,11 @@
-from matera.core.contracts import NormalizedPageResult
+from matera.core.contracts import (
+    AnswerKey,
+    NormalizedAnswer,
+    NormalizedPageResult,
+    ReviewTask,
+)
 from matera.core.profile import FormProfile
 from matera.vision.contracts import MarkScore, RoutingConfig
-import uuid
-from matera.core.contracts import AnswerKey, NormalizedAnswer, NormalizedPageResult, ReviewTask
 
 
 def route_page(
@@ -19,21 +22,37 @@ def route_page(
 
     # Fail-fast validation
     profile_options = set()
+    question_map = {}
     for q in profile.questions:
+        question_map[q.question_id] = q
         for opt in q.options:
             profile_options.add((q.question_id, opt.option_id))
 
     provided_options = set()
+    score_by_key = {}
     for ms in mark_scores:
         if not ms.evidence_path:
-            raise ValueError(f"Missing evidence_path in MarkScore for {ms.question_id}.{ms.option_id}")
-            
+            raise ValueError(
+                f"Missing evidence_path in MarkScore for {ms.question_id}.{ms.option_id}"
+            )
+
         key = (ms.question_id, ms.option_id)
         if key not in profile_options:
-            raise ValueError(f"Unknown or extra MarkScore found for {ms.question_id}.{ms.option_id}")
+            raise ValueError(
+                f"Unknown or extra MarkScore found for {ms.question_id}.{ms.option_id}"
+            )
         if key in provided_options:
             raise ValueError(f"Duplicate MarkScore found for {ms.question_id}.{ms.option_id}")
+
+        q_def = question_map[ms.question_id]
+        if ms.strategy != q_def.mark_strategy:
+            raise ValueError(
+                f"Mark strategy mismatch for {ms.question_id}.{ms.option_id}: "
+                f"expected {q_def.mark_strategy}, got {ms.strategy}"
+            )
+
         provided_options.add(key)
+        score_by_key[key] = ms
 
     missing_options = profile_options - provided_options
     if missing_options:
@@ -43,16 +62,12 @@ def route_page(
     answers: list[NormalizedAnswer] = []
     review_tasks: list[ReviewTask] = []
 
-    score_map: dict[str, list[MarkScore]] = {}
-    for ms in mark_scores:
-        score_map.setdefault(ms.question_id, []).append(ms)
-
     for q_def in profile.questions:
-        q_scores = score_map.get(q_def.question_id, [])
-        
+        q_scores = [score_by_key[(q_def.question_id, opt.option_id)] for opt in q_def.options]
+
         original_selections = {}
         final_selections = {}
-        
+
         for ms in q_scores:
             if ms.score < config.low_threshold:
                 original_selections[ms.option_id] = False
@@ -68,14 +83,17 @@ def route_page(
             for opt_id, is_sel in original_selections.items():
                 if is_sel is True:
                     final_selections[opt_id] = None
-        
+
         elif num_selected < q_def.min_selections and q_scores:
             max_score = max(ms.score for ms in q_scores)
             for ms in q_scores:
                 if ms.score == max_score:
                     final_selections[ms.option_id] = None
 
-        for ms in q_scores:
+        # Build answers in the exact order of FormProfile options
+        for opt in q_def.options:
+            ms = score_by_key[(q_def.question_id, opt.option_id)]
+
             key = AnswerKey(
                 form_id=profile.form_id,
                 form_version=profile.form_version,
@@ -83,10 +101,17 @@ def route_page(
                 question_id=ms.question_id,
                 option_id=ms.option_id,
             )
-            
+
             selected = final_selections[ms.option_id]
             resolution_status = "resolved" if selected is not None else "needs_review"
-            
+
+            if selected is True:
+                confidence = float(ms.score)
+            elif selected is False:
+                confidence = float(1.0 - ms.score)
+            else:
+                confidence = None
+
             answers.append(
                 NormalizedAnswer(
                     answer_key=key,
@@ -94,7 +119,7 @@ def route_page(
                     resolution_status=resolution_status,
                     decision_source="deterministic",
                     deterministic_score=ms.score,
-                    confidence=ms.score,
+                    confidence=confidence,
                     evidence_path=str(ms.evidence_path) if ms.evidence_path else None,
                 )
             )
@@ -102,18 +127,35 @@ def route_page(
             if resolution_status == "needs_review":
                 orig_sel = original_selections[ms.option_id]
                 if orig_sel is True:
-                    reason = f"Over-selection: {num_selected} options selected, max is {q_def.max_selections}"
+                    reason = (
+                        f"Over-selection: {num_selected} options selected, "
+                        f"max is {q_def.max_selections}"
+                    )
                 elif orig_sel is False:
-                    reason = f"Under-selection: {num_selected} options selected, min is {q_def.min_selections}. Highest score was {ms.score:.3f}"
+                    reason = (
+                        f"Under-selection: {num_selected} options selected, "
+                        f"min is {q_def.min_selections}. Highest score was {ms.score:.3f}"
+                    )
                 else:
                     if num_selected < q_def.min_selections and ms.score == max_score:
-                        reason = f"Under-selection (and ambiguous): {num_selected} options selected, min is {q_def.min_selections}. Highest score was {ms.score:.3f}"
+                        reason = (
+                            f"Under-selection (and ambiguous): {num_selected} options selected, "
+                            f"min is {q_def.min_selections}. Highest score was {ms.score:.3f}"
+                        )
                     else:
-                        reason = f"Score {ms.score:.3f} is ambiguous (thresholds: {config.low_threshold}-{config.high_threshold})"
+                        reason = (
+                            f"Score {ms.score:.3f} is ambiguous "
+                            f"(thresholds: {config.low_threshold}-{config.high_threshold})"
+                        )
+
+                task_id = (
+                    f"review:{key.form_id}:{key.form_version}:{key.page_number}:"
+                    f"{key.question_id}:{key.option_id}"
+                )
 
                 review_tasks.append(
                     ReviewTask(
-                        task_id=str(uuid.uuid4()),
+                        task_id=task_id,
                         answer_key=key,
                         reason=reason,
                         status="pending",
