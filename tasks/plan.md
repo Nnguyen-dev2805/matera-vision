@@ -424,8 +424,8 @@ Runtime and contracts
 ##### Task 8.1: Implement RoutingConfig and API scaffolding
 **Description:** Define `RoutingConfig` with threshold validation, and create the skeleton for `route_page` returning `NormalizedPageResult`.
 **Acceptance criteria:**
-- `RoutingConfig` validates `0 <= low < high <= 1`.
-- `route_page` signature matches the spec.
+- [x] `RoutingConfig` validates `0 <= low < high <= 1`.
+- [x] `route_page` signature matches the spec.
 
 ##### Task 8.2: Implement option-level deterministic scoring
 **Description:** Iterate through `MarkScore`s and evaluate them against the thresholds to determine initial `selected` and `resolution_status`.

@@ -92,3 +92,18 @@ class MarkScoringConfig:
 
     # The multiplier for foreground_area_ratio to map to a 0.0-1.0 score for circle/checkbox
     area_score_multiplier: float = 10.0
+
+
+@dataclass(frozen=True)
+class RoutingConfig:
+    """Configuration for decision routing and ambiguity thresholds."""
+
+    low_threshold: float = 0.2
+    high_threshold: float = 0.6
+
+    def __post_init__(self):
+        if not (0.0 <= self.low_threshold < self.high_threshold <= 1.0):
+            raise ValueError(
+                f"Thresholds must satisfy 0.0 <= low < high <= 1.0, "
+                f"got low={self.low_threshold}, high={self.high_threshold}"
+            )
