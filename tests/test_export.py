@@ -58,7 +58,15 @@ def test_flatten_result_resolved(sample_profile: FormProfile):
     )
 
     row = flatten_result(result, sample_profile)
-    assert row == ["test", "v1", 1, "resolved", 1, 0, ""]
+    assert row == {
+        "form_id": "test",
+        "form_version": "v1",
+        "page_number": 1,
+        "page_status": "resolved",
+        "q1_o1": 1,
+        "q1_o2": 0,
+        "review_tasks": "",
+    }
 
 
 def test_flatten_result_needs_review(sample_profile: FormProfile):
@@ -98,13 +106,13 @@ def test_flatten_result_needs_review(sample_profile: FormProfile):
     row = flatten_result(result, sample_profile)
 
     # Needs review -> empty string ""
-    assert row[4] == ""
-    assert row[5] == ""
+    assert row["q1_o1"] == ""
+    assert row["q1_o2"] == ""
 
     # review_tasks JSON verification
     import json
 
-    tasks = json.loads(row[6])
+    tasks = json.loads(row["review_tasks"])
     assert len(tasks) == 2
     assert tasks[0]["question"] == "q1"
     assert tasks[0]["option"] == "o1"
@@ -151,10 +159,13 @@ def test_export_to_excel_end_to_end(tmp_path: Path, sample_profile: FormProfile)
     assert header_row == generate_headers(sample_profile)
 
     # Check data (row 2)
-    # openpyxl reads empty cells as None, but our flat list puts ""
+    # We expect: {"form_id": "test", "form_version": "v1", "page_number": 1,
+    #             "page_status": "resolved", "q1_o1": 1, "q1_o2": 0, "review_tasks": ""}
+    # openpyxl reads empty cells as None, but our list logic puts ""
     data_row = [cell.value if cell.value is not None else "" for cell in ws[2]]
 
-    expected_row = flatten_result(result, sample_profile)
+    row_dict = flatten_result(result, sample_profile)
+    expected_row = [row_dict.get(h, "") for h in generate_headers(sample_profile)]
     assert data_row == expected_row
 
     # Will fail until implemented, but confirms import works.

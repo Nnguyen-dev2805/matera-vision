@@ -20,29 +20,31 @@ def generate_headers(profile: FormProfile) -> list[str]:
     return columns
 
 
-def flatten_result(result: NormalizedPageResult, profile: FormProfile) -> list[Any]:
-    """Converts a NormalizedPageResult into a flat list of cell values matching the headers."""
+def flatten_result(result: NormalizedPageResult, profile: FormProfile) -> dict[str, Any]:
+    """Converts a NormalizedPageResult into a dictionary of column_name -> cell_value."""
     # Index the answers by key
     answer_map = {
         (ans.answer_key.question_id, ans.answer_key.option_id): ans for ans in result.answers
     }
 
-    row: list[Any] = [
-        result.form_id,
-        result.form_version,
-        result.page_number,
-        result.page_status,
-    ]
+    row: dict[str, Any] = {
+        "form_id": result.form_id,
+        "form_version": result.form_version,
+        "page_number": result.page_number,
+        "page_status": result.page_status,
+    }
 
     for q in profile.questions:
         for opt in q.options:
             key = (q.question_id, opt.option_id)
             ans = answer_map.get(key)
 
+            col_name = f"{q.question_id}_{opt.option_id}"
+
             if ans is None or ans.resolution_status == "needs_review":
-                row.append("")
+                row[col_name] = ""
             else:
-                row.append(1 if ans.selected is True else 0)
+                row[col_name] = 1 if ans.selected is True else 0
 
     # Serialize review tasks if any
     if result.review_tasks:
@@ -54,9 +56,9 @@ def flatten_result(result: NormalizedPageResult, profile: FormProfile) -> list[A
             }
             for task in result.review_tasks
         ]
-        row.append(json.dumps(tasks_json))
+        row["review_tasks"] = json.dumps(tasks_json)
     else:
-        row.append("")
+        row["review_tasks"] = ""
 
     return row
 
@@ -72,7 +74,8 @@ def export_to_excel(
     ws.append(headers)
 
     for result in results:
-        row = flatten_result(result, profile)
+        row_dict = flatten_result(result, profile)
+        row = [row_dict.get(h, "") for h in headers]
         ws.append(row)
 
     wb.save(output_path)
