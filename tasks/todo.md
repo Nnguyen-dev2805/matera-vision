@@ -118,7 +118,7 @@
     - Acceptance: Script correctly tallies TP/TN/FP/FN/Review, handles strict page-level exact match definition, and groups by `response_type`. Outputs JSON.
     - Verify: Test with golden dataset outputs a valid JSON report.
     - Files: `src/matera/evaluation/evaluate_baseline.py`
-  - [ ] Task 10.4: Implement debug image generation
+  - [x] Task 10.4: Implement debug image generation
     - Acceptance: For any FP, FN, or Review item, the script draws colored bounding boxes and saves the image to `data/debug/errors/`.
     - Verify: Inspect `data/debug/errors/` manually for correct overlays.
     - Files: `src/matera/evaluation/evaluate_baseline.py`

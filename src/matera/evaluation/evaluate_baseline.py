@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from matera.core.contracts import RoutingConfig
+from matera.core.layout import load_layout_profile
 from matera.core.profile import load_semantic_profile
 from matera.data.loader import load_page_image
 from matera.evaluation.metrics import ConfusionMatrix
@@ -50,7 +51,12 @@ def run_evaluation(dataset_path: Path, output_path: Path) -> None:
 
     # We assume 'matera-pre' v1 profile for this baseline harness
     profile = load_semantic_profile(Path("profiles/matera-pre/v1/semantic.json"))
-    print(f"Loaded profile: {profile.form_id} {profile.form_version}")
+    layout_profile = load_layout_profile(Path("profiles/matera-pre/v1/layout.json"))
+    print(f"Loaded semantic profile: {profile.form_id} {profile.form_version}")
+
+    roi_map = {
+        (mapping.question_id, mapping.option_id): mapping.roi for mapping in layout_profile.mappings
+    }
 
     # Initialize pipeline
     aligner = TemplateAligner(reference_image_path=Path("data/pages/page_1.png"))
@@ -93,9 +99,12 @@ def run_evaluation(dataset_path: Path, output_path: Path) -> None:
         page_errors = 0
         page_reviews = 0
 
+        draw_tasks = []
+
         for expected in expected_answers:
             key = (expected.question_id, expected.option_id)
             ans = result_map.get(key)
+            roi = roi_map.get(key)
 
             resp_type = expected.response_type
             if resp_type not in report.by_response_type:
@@ -106,6 +115,9 @@ def run_evaluation(dataset_path: Path, output_path: Path) -> None:
                 report.overall_metrics.needs_review += 1
                 report.by_response_type[resp_type].needs_review += 1
                 page_reviews += 1
+                if roi:
+                    # Yellow for Needs Review
+                    draw_tasks.append((roi, (0, 255, 255)))
                 continue
 
             # Calculate TP/TN/FP/FN
@@ -124,16 +136,34 @@ def run_evaluation(dataset_path: Path, output_path: Path) -> None:
                 report.overall_metrics.fp += 1
                 report.by_response_type[resp_type].fp += 1
                 page_errors += 1
+                if roi:
+                    # Red for False Positive
+                    draw_tasks.append((roi, (0, 0, 255)))
             elif expected.expected_mark == 1 and selected == 0:
                 page_cm.fn += 1
                 report.overall_metrics.fn += 1
                 report.by_response_type[resp_type].fn += 1
                 page_errors += 1
+                if roi:
+                    # Red for False Negative
+                    draw_tasks.append((roi, (0, 0, 255)))
 
         # Check for exact match
         report.total_pages += 1
         if page_errors == 0 and page_reviews == 0:
             report.exact_match_pages += 1
+        else:
+            # Generate debug image
+            if draw_tasks:
+                import cv2
+
+                debug_img = aligned_page.image.copy()
+                for roi, color in draw_tasks:
+                    cv2.rectangle(
+                        debug_img, (roi.x, roi.y), (roi.x + roi.width, roi.y + roi.height), color, 2
+                    )
+                out_name = debug_dir / f"error_{page_image_name}"
+                cv2.imwrite(str(out_name), debug_img)
 
     # Save JSON report
     report_dict = {
