@@ -97,7 +97,7 @@
     - Acceptance: `openpyxl` is added to `pyproject.toml` and resolvable. The module `matera.export` is scaffolded.
     - Verify: `ruff check` passes. Test skeleton runs successfully.
     - Files: `pyproject.toml`, `src/matera/export/__init__.py`, `src/matera/export/excel.py`, `tests/test_export.py`
-  - [ ] Task 9.2: Implement dynamic header generation and result flattening
+  - [x] Task 9.2: Implement dynamic header generation and result flattening
     - Acceptance: `generate_headers` produces exact columns from `FormProfile` plus `page_status` and `review_tasks`. `flatten_result` maps True/False/None correctly.
     - Verify: `pytest tests/test_export.py` passes unit tests for mapping logic.
     - Files: `src/matera/export/excel.py`, `tests/test_export.py`
