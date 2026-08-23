@@ -101,7 +101,7 @@
     - Acceptance: `generate_headers` produces exact columns from `FormProfile` plus `page_status` and `review_tasks`. `flatten_result` maps True/False/None correctly.
     - Verify: `pytest tests/test_export.py` passes unit tests for mapping logic.
     - Files: `src/matera/export/excel.py`, `tests/test_export.py`
-  - [ ] Task 9.3: Implement Excel file generation logic
+  - [x] Task 9.3: Implement Excel file generation logic
     - Acceptance: `export_to_excel` correctly outputs the data to `.xlsx`.
     - Verify: Test writes an `.xlsx` to a temporary directory and re-reads it successfully.
     - Files: `src/matera/export/excel.py`, `tests/test_export.py`

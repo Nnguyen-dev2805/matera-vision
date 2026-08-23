@@ -2,6 +2,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from openpyxl import Workbook
+
 from matera.core.contracts import NormalizedPageResult
 from matera.core.profile import FormProfile
 
@@ -62,4 +64,15 @@ def flatten_result(result: NormalizedPageResult, profile: FormProfile) -> list[A
 def export_to_excel(
     results: list[NormalizedPageResult], profile: FormProfile, output_path: Path
 ) -> None:
-    pass
+    """Exports a list of NormalizedPageResults to an Excel file (.xlsx) based on the FormProfile."""
+    wb = Workbook()
+    ws = wb.active
+
+    headers = generate_headers(profile)
+    ws.append(headers)
+
+    for result in results:
+        row = flatten_result(result, profile)
+        ws.append(row)
+
+    wb.save(output_path)

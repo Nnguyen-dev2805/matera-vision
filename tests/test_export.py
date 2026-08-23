@@ -114,7 +114,47 @@ def test_flatten_result_needs_review(sample_profile: FormProfile):
     assert tasks[1]["reason"] == "Ambiguous"
 
 
-def test_export_to_excel_skeleton(tmp_path: Path, sample_profile: FormProfile):
-    export_to_excel([], sample_profile, tmp_path / "out.xlsx")
+def test_export_to_excel_end_to_end(tmp_path: Path, sample_profile: FormProfile):
+    # Setup results
+    ans1 = NormalizedAnswer(
+        answer_key=AnswerKey("test", "v1", 1, "q1", "o1"),
+        selected=True,
+        resolution_status="resolved",
+        decision_source="deterministic",
+    )
+    ans2 = NormalizedAnswer(
+        answer_key=AnswerKey("test", "v1", 1, "q1", "o2"),
+        selected=False,
+        resolution_status="resolved",
+        decision_source="deterministic",
+    )
+    result = NormalizedPageResult(
+        form_id="test",
+        form_version="v1",
+        page_number=1,
+        answers=(ans1, ans2),
+    )
+
+    output_file = tmp_path / "out.xlsx"
+    export_to_excel([result], sample_profile, output_file)
+
+    assert output_file.exists()
+
+    # Verify the contents by reading it back
+    import openpyxl
+
+    wb = openpyxl.load_workbook(output_file)
+    ws = wb.active
+
+    # Check headers (row 1)
+    header_row = [cell.value for cell in ws[1]]
+    assert header_row == generate_headers(sample_profile)
+
+    # Check data (row 2)
+    # openpyxl reads empty cells as None, but our flat list puts ""
+    data_row = [cell.value if cell.value is not None else "" for cell in ws[2]]
+
+    expected_row = flatten_result(result, sample_profile)
+    assert data_row == expected_row
 
     # Will fail until implemented, but confirms import works.
