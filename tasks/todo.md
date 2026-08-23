@@ -93,6 +93,18 @@
 ## Phase 3: Normalized Output And Baseline Evaluation
 
 - [ ] Task 9: Implement normalized answers and Excel export
+  - [x] Task 9.1: Add dependencies and basic export scaffolding
+    - Acceptance: `openpyxl` is added to `pyproject.toml` and resolvable. The module `matera.export` is scaffolded.
+    - Verify: `ruff check` passes. Test skeleton runs successfully.
+    - Files: `pyproject.toml`, `src/matera/export/__init__.py`, `src/matera/export/excel.py`, `tests/test_export.py`
+  - [ ] Task 9.2: Implement dynamic header generation and result flattening
+    - Acceptance: `generate_headers` produces exact columns from `FormProfile` plus `page_status` and `review_tasks`. `flatten_result` maps True/False/None correctly.
+    - Verify: `pytest tests/test_export.py` passes unit tests for mapping logic.
+    - Files: `src/matera/export/excel.py`, `tests/test_export.py`
+  - [ ] Task 9.3: Implement Excel file generation logic
+    - Acceptance: `export_to_excel` correctly outputs the data to `.xlsx`.
+    - Verify: Test writes an `.xlsx` to a temporary directory and re-reads it successfully.
+    - Files: `src/matera/export/excel.py`, `tests/test_export.py`
 - [ ] Task 10: Build the evaluation harness
 
 ## Checkpoint: End-To-End Baseline
