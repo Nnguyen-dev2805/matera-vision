@@ -427,12 +427,12 @@ Runtime and contracts
 - [x] `RoutingConfig` validates `0 <= low < high <= 1`.
 - [x] `route_page` signature matches the spec.
 
-##### Task 8.2: Implement option-level deterministic scoring
+##### Task 8.2: Implement Option-level deterministic scoring
 **Description:** Iterate through `MarkScore`s and evaluate them against the thresholds to determine initial `selected` and `resolution_status`.
 **Acceptance criteria:**
-- Scores < low -> `selected=False`.
-- Scores >= high -> `selected=True`.
-- Scores between low and high -> `selected=None`, status="needs_review", and a pending `ReviewTask` is created.
+- [x] Scores < low -> `selected=False`.
+- [x] Scores >= high -> `selected=True`.
+- [x] Scores between low and high -> `selected=None`, status="needs_review", and a pending `ReviewTask` is created.
 
 ##### Task 8.3: Implement question-level constraints
 **Description:** Apply over-selection (`> max_selections`) and under-selection (`< min_selections`) constraints per question.

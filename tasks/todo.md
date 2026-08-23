@@ -78,7 +78,7 @@
     - Cập nhật acceptance test dùng `data/golden/images` (có tiêm synthetic mark do data hiện tại toàn clean page).
 - [ ] Task 8: Implement decision and review routing
   - [x] Task 8.1: Implement RoutingConfig and API scaffolding
-  - [ ] Task 8.2: Implement Option-level deterministic scoring
+  - [x] Task 8.2: Implement Option-level deterministic scoring
   - [ ] Task 8.3: Implement Question-level constraints (over/under-selection)
   - [ ] Task 8.4: Implement validation rules (Fail-fasts)
   - [ ] Task 8.5: Complete testing and integration
