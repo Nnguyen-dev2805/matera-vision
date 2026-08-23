@@ -110,7 +110,7 @@
     - Acceptance: `matera.evaluation.metrics` and `report` are created with `ConfusionMatrix` and related logic. Div-by-zero is safely handled.
     - Verify: Unit tests in `tests/test_evaluation.py` pass for all math functions.
     - Files: `src/matera/evaluation/__init__.py`, `src/matera/evaluation/metrics.py`, `src/matera/evaluation/report.py`, `tests/test_evaluation.py`
-  - [ ] Task 10.2: Implement evaluation CLI harness and data loading
+  - [x] Task 10.2: Implement evaluation CLI harness and data loading
     - Acceptance: `evaluate_baseline.py` can load `labels.csv`, load the `FormProfile`, and execute the pipeline loop over unique page images.
     - Verify: `ruff check` passes. Can load dummy data.
     - Files: `src/matera/evaluation/evaluate_baseline.py`
