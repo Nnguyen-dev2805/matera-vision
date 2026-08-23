@@ -106,6 +106,22 @@
     - Verify: Test writes an `.xlsx` to a temporary directory and re-reads it successfully.
     - Files: `src/matera/export/excel.py`, `tests/test_export.py`
 - [ ] Task 10: Build the evaluation harness
+  - [x] Task 10.1: Implement metrics mathematical module
+    - Acceptance: `matera.evaluation.metrics` and `report` are created with `ConfusionMatrix` and related logic. Div-by-zero is safely handled.
+    - Verify: Unit tests in `tests/test_evaluation.py` pass for all math functions.
+    - Files: `src/matera/evaluation/__init__.py`, `src/matera/evaluation/metrics.py`, `src/matera/evaluation/report.py`, `tests/test_evaluation.py`
+  - [ ] Task 10.2: Implement evaluation CLI harness and data loading
+    - Acceptance: `evaluate_baseline.py` can load `labels.csv`, load the `FormProfile`, and execute the pipeline loop over unique page images.
+    - Verify: `ruff check` passes. Can load dummy data.
+    - Files: `src/matera/evaluation/evaluate_baseline.py`
+  - [ ] Task 10.3: Implement metric comparison and report generation
+    - Acceptance: Script correctly tallies TP/TN/FP/FN/Review, handles strict page-level exact match definition, and groups by `response_type`. Outputs JSON.
+    - Verify: Test with golden dataset outputs a valid JSON report.
+    - Files: `src/matera/evaluation/evaluate_baseline.py`
+  - [ ] Task 10.4: Implement debug image generation
+    - Acceptance: For any FP, FN, or Review item, the script draws colored bounding boxes and saves the image to `data/debug/errors/`.
+    - Verify: Inspect `data/debug/errors/` manually for correct overlays.
+    - Files: `src/matera/evaluation/evaluate_baseline.py`
 
 ## Checkpoint: End-To-End Baseline
 
