@@ -434,12 +434,11 @@ Runtime and contracts
 - [x] Scores >= high -> `selected=True`.
 - [x] Scores between low and high -> `selected=None`, status="needs_review", and a pending `ReviewTask` is created.
 
-##### Task 8.3: Implement question-level constraints
-**Description:** Apply over-selection (`> max_selections`) and under-selection (`< min_selections`) constraints per question.
+##### Task 8.3: Implement Question-level constraints (over/under-selection):** Apply over-selection (`> max_selections`) and under-selection (`< min_selections`) constraints per question.
 **Acceptance criteria:**
-- Over-selection sets all `>high` options to `needs_review` + `ReviewTask`.
-- Under-selection sets highest-score option to `needs_review` + `ReviewTask`.
-- Page status bubbles up to `"review_required"` if any review task exists.
+- [x] Over-selection sets all `>high` options to `needs_review` + `ReviewTask`.
+- [x] Under-selection sets highest-score option to `needs_review` + `ReviewTask`.
+- [x] Page status bubbles up to `"review_required"` if any review task exists.
 
 ##### Task 8.4: Implement validation rules (Fail-fasts)
 **Description:** Ensure missing/duplicate/unknown scores or metadata raise errors before building the page result.

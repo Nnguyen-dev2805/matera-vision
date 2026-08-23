@@ -112,3 +112,98 @@ def test_route_page_option_level_scoring():
     assert "0.4" in rt.reason
 
     assert result.page_status == "review_required"
+
+
+def test_route_page_over_selection():
+    profile = FormProfile(
+        form_id="test",
+        form_version="v1",
+        questions=(
+            QuestionDef(
+                question_id="q1",
+                response_type="single_select",
+                mark_strategy="circle",
+                options=(
+                    OptionDef(option_id="o1", value=1),
+                    OptionDef(option_id="o2", value=2),
+                ),
+                min_selections=1,
+                max_selections=1
+            ),
+        )
+    )
+
+    from matera.vision.contracts import MarkScore, ROIFeature
+    mock_feature = ROIFeature(0.0, 0.0, 0, 0.0, 0.0)
+
+    # 2 options > 0.6 -> over-selection (max_selections=1)
+    scores = [
+        MarkScore("q1", "o1", 0.8, "circle", "diff", mock_feature, None),
+        MarkScore("q1", "o2", 0.9, "circle", "diff", mock_feature, None),
+    ]
+
+    config = RoutingConfig(low_threshold=0.2, high_threshold=0.6)
+    result = route_page(mark_scores=scores, profile=profile, page_number=1, config=config)
+
+    assert len(result.answers) == 2
+    for ans in result.answers:
+        assert ans.selected is None
+        assert ans.resolution_status == "needs_review"
+
+    assert len(result.review_tasks) == 2
+    for rt in result.review_tasks:
+        assert rt.status == "pending"
+        assert "Over-selection" in rt.reason
+
+    assert result.page_status == "review_required"
+
+
+def test_route_page_under_selection():
+    profile = FormProfile(
+        form_id="test",
+        form_version="v1",
+        questions=(
+            QuestionDef(
+                question_id="q1",
+                response_type="single_select",
+                mark_strategy="circle",
+                options=(
+                    OptionDef(option_id="o1", value=1),
+                    OptionDef(option_id="o2", value=2),
+                ),
+                min_selections=1,
+                max_selections=1
+            ),
+        )
+    )
+
+    from matera.vision.contracts import MarkScore, ROIFeature
+    mock_feature = ROIFeature(0.0, 0.0, 0, 0.0, 0.0)
+
+    # 0 options > 0.6 -> under-selection (min_selections=1)
+    # The highest score is 0.15 for o2.
+    scores = [
+        MarkScore("q1", "o1", 0.1, "circle", "diff", mock_feature, None),
+        MarkScore("q1", "o2", 0.15, "circle", "diff", mock_feature, None),
+    ]
+
+    config = RoutingConfig(low_threshold=0.2, high_threshold=0.6)
+    result = route_page(mark_scores=scores, profile=profile, page_number=1, config=config)
+
+    assert len(result.answers) == 2
+    
+    a1 = next(a for a in result.answers if a.answer_key.option_id == "o1")
+    assert a1.selected is False
+    assert a1.resolution_status == "resolved"
+
+    a2 = next(a for a in result.answers if a.answer_key.option_id == "o2")
+    assert a2.selected is None
+    assert a2.resolution_status == "needs_review"
+
+    assert len(result.review_tasks) == 1
+    rt = result.review_tasks[0]
+    assert rt.answer_key.option_id == "o2"
+    assert "Under-selection" in rt.reason
+    assert "0.150" in rt.reason
+
+    assert result.page_status == "review_required"
