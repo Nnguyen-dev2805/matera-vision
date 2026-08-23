@@ -80,6 +80,9 @@ def run_evaluation(dataset_path: Path, output_path: Path) -> None:
 
         page_image = load_page_image(img_path)
 
+        # Count the page regardless of whether it crashes (Risk 2 Fix)
+        report.total_pages += 1
+
         # Run Pipeline
         try:
             aligned_page = aligner.align(page_image)
@@ -110,7 +113,15 @@ def run_evaluation(dataset_path: Path, output_path: Path) -> None:
             if resp_type not in report.by_response_type:
                 report.by_response_type[resp_type] = ConfusionMatrix()
 
-            if ans is None or ans.resolution_status == "needs_review":
+            if ans is None:
+                # System Error / Data drop - not a review! (Risk 3 Fix)
+                is_review = False
+                selected = 0
+            else:
+                is_review = ans.resolution_status == "needs_review"
+                selected = 1 if ans.selected else 0
+
+            if is_review:
                 page_cm.needs_review += 1
                 report.overall_metrics.needs_review += 1
                 report.by_response_type[resp_type].needs_review += 1
@@ -121,7 +132,6 @@ def run_evaluation(dataset_path: Path, output_path: Path) -> None:
                 continue
 
             # Calculate TP/TN/FP/FN
-            selected = 1 if ans.selected else 0
 
             if expected.expected_mark == 1 and selected == 1:
                 page_cm.tp += 1
@@ -149,7 +159,6 @@ def run_evaluation(dataset_path: Path, output_path: Path) -> None:
                     draw_tasks.append((roi, (0, 0, 255)))
 
         # Check for exact match
-        report.total_pages += 1
         if page_errors == 0 and page_reviews == 0:
             report.exact_match_pages += 1
         else:
