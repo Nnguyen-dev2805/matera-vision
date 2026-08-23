@@ -68,22 +68,22 @@ def main() -> int:
             return 1
 
     for page in pages_to_draw:
-        scale_x = 1.0
-        scale_y = 1.0
-        img = None
-
+        bg_images = []
         if args.images_dir:
-            # Try to find background image (e.g., page_1.png or page_001.png)
-            bg_path = args.images_dir / f"page_{page.page_number}.png"
-            if not bg_path.exists():
-                bg_path = args.images_dir / f"page_{page.page_number:03d}.png"
-
-            if bg_path.exists():
-                img = Image.open(bg_path)
-                if img.width != page.width_px or img.height != page.height_px:
-                    scale_x = img.width / page.width_px
-                    scale_y = img.height / page.height_px
+            if len(pages_to_draw) == 1:
+                # 1-page template: apply to all scan instances in the directory
+                pngs = list(args.images_dir.glob("*.png"))
+                jpgs = list(args.images_dir.glob("*.jpg"))
+                bg_images = sorted(pngs + jpgs)
             else:
+                # Multi-page template: find the specific page image
+                bg_path = args.images_dir / f"page_{page.page_number}.png"
+                if not bg_path.exists():
+                    bg_path = args.images_dir / f"page_{page.page_number:03d}.png"
+                if bg_path.exists():
+                    bg_images = [bg_path]
+
+            if not bg_images:
                 print(
                     f"Error: Background image not found in {args.images_dir} "
                     f"for page {page.page_number}.",
@@ -91,35 +91,60 @@ def main() -> int:
                 )
                 return 1
 
-        if img is None:
-            # Create a blank image with original layout dimensions
-            img = Image.new("RGB", (page.width_px, page.height_px), "white")
+        # If no images found, still generate a blank one
+        if not bg_images:
+            bg_images = [None]
 
-        draw = ImageDraw.Draw(img)
+        for img_idx, bg_path in enumerate(bg_images):
+            scale_x = 1.0
+            scale_y = 1.0
+            img = None
 
-        # Draw page bounds (green)
-        draw_bounding_box(
-            draw,
-            type("BBox", (), {"x": 0, "y": 0, "w": page.width_px, "h": page.height_px})(),
-            f"page_{page.page_number:03d}",
-            "green",
-            scale_x,
-            scale_y,
-        )
+            if bg_path:
+                img = Image.open(bg_path)
+                if img.width != page.width_px or img.height != page.height_px:
+                    scale_x = img.width / page.width_px
+                    scale_y = img.height / page.height_px
+            else:
+                # Create a blank image with original layout dimensions
+                img = Image.new("RGB", (page.width_px, page.height_px), "white")
 
-        # Draw anchors (blue)
-        for anchor in page.anchors:
-            label = f"{anchor.anchor_type}:{anchor.anchor_id}"
-            draw_bounding_box(draw, anchor.bbox, label, "blue", scale_x, scale_y)
+            draw = ImageDraw.Draw(img)
 
-        # Draw ROIs (red)
-        for roi in page.rois:
-            label = f"{roi.question_id}/{roi.option_id}"
-            draw_bounding_box(draw, roi.bbox, label, "red", scale_x, scale_y)
+            # Draw page bounds (green)
+            draw_bounding_box(
+                draw,
+                type("BBox", (), {"x": 0, "y": 0, "w": page.width_px, "h": page.height_px})(),
+                f"page_{page.page_number:03d}",
+                "green",
+                scale_x,
+                scale_y,
+            )
 
-        output_path = args.output_dir / f"overlay_page_{page.page_number:03d}.png"
-        img.save(output_path)
-        print(f"Generated {output_path}")
+            # Draw anchors (blue)
+            for anchor in page.anchors:
+                label = f"{anchor.anchor_type}:{anchor.anchor_id}"
+                draw_bounding_box(draw, anchor.bbox, label, "blue", scale_x, scale_y)
+
+            # Draw ROIs (red)
+            for roi in page.rois:
+                label = f"{roi.question_id}/{roi.option_id}"
+                draw_bounding_box(draw, roi.bbox, label, "red", scale_x, scale_y)
+
+            if bg_path:
+                import re
+                m = re.search(r'\d+', bg_path.stem)
+                if m:
+                    num = int(m.group())
+                    output_name = f"overlay_page_{num:03d}.png"
+                else:
+                    output_name = f"overlay_{bg_path.stem}.png"
+            else:
+                output_name = f"overlay_page_{page.page_number:03d}.png"
+
+            output_path = args.output_dir / output_name
+            img.save(output_path)
+            print(f"Generated {output_path}")
 
     return 0
 

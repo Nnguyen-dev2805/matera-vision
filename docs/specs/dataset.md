@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from typing import Literal
 from PIL import Image
 
+
 @dataclass(frozen=True)
 class RenderedPage:
     page_number: int  # 1-indexed
@@ -49,7 +50,8 @@ class RenderedPage:
     pdf_width_pt: float
     pdf_height_pt: float
     image: Image.Image
-    
+
+
 @dataclass(frozen=True)
 class PageArtifact:
     page_number: int
@@ -60,15 +62,18 @@ class PageArtifact:
     pdf_width_pt: float
     pdf_height_pt: float
 
+
 @dataclass(frozen=True)
 class RendererInfo:
     name: str
     version: str
 
+
 @dataclass(frozen=True)
 class ImageLibraryInfo:
     name: str
     version: str
+
 
 @dataclass(frozen=True)
 class RenderConfig:
@@ -77,6 +82,7 @@ class RenderConfig:
     compress_level: int
     optimize: bool
     strip_metadata: bool
+
 
 @dataclass(frozen=True)
 class ExtractionManifest:

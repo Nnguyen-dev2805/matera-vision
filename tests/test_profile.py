@@ -1,6 +1,9 @@
+from pathlib import Path
+
 import pytest
 
-from matera.core.profile import FormProfile, OptionDef, QuestionDef
+from matera.core.errors import ProfileValidationError
+from matera.core.profile import FormProfile, OptionDef, QuestionDef, load_semantic_profile
 
 
 def test_option_def_valid():
@@ -346,12 +349,6 @@ def test_form_profile_mutable_questions_rejected():
         FormProfile("form1", "v1", questions_list)  # type: ignore
 
 
-from pathlib import Path
-
-from matera.core.errors import ProfileValidationError
-from matera.core.profile import load_semantic_profile
-
-
 def test_load_semantic_profile_valid(tmp_path: Path):
     json_data = """{
         "form_id": "matera-pre",
@@ -456,8 +453,14 @@ def test_load_semantic_profile_invalid_question(tmp_path: Path):
     p.write_text("""{
         "form_id": "f", "form_version": "v1", 
         "questions": [
-            {"question_id": "Q1", "response_type": "single_select", "mark_strategy": "checkbox", "options": ["a"]},
-            {"question_id": "Q1", "response_type": "single_select", "mark_strategy": "checkbox", "options": ["a"]}
+            {
+                "question_id": "Q1", "response_type": "single_select", 
+                "mark_strategy": "checkbox", "options": ["a"]
+            },
+            {
+                "question_id": "Q1", "response_type": "single_select", 
+                "mark_strategy": "checkbox", "options": ["a"]
+            }
         ]
     }""")
     with pytest.raises(ProfileValidationError) as exc:
@@ -469,7 +472,10 @@ def test_load_semantic_profile_invalid_question(tmp_path: Path):
     p.write_text("""{
         "form_id": "f", "form_version": "v1", 
         "questions": [
-            {"question_id": "Q1", "response_type": "single_select", "mark_strategy": "checkbox", "options": []}
+            {
+                "question_id": "Q1", "response_type": "single_select", 
+                "mark_strategy": "checkbox", "options": []
+            }
         ]
     }""")
     with pytest.raises(ProfileValidationError) as exc:
@@ -481,7 +487,10 @@ def test_load_semantic_profile_invalid_question(tmp_path: Path):
     p.write_text("""{
         "form_id": "f", "form_version": "v1", 
         "questions": [
-            {"question_id": "Q1", "response_type": "single_select", "mark_strategy": "checkbox", "options": ["a", "a"]}
+            {
+                "question_id": "Q1", "response_type": "single_select", 
+                "mark_strategy": "checkbox", "options": ["a", "a"]
+            }
         ]
     }""")
     with pytest.raises(ProfileValidationError) as exc:

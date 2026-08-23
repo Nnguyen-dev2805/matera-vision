@@ -1,0 +1,797 @@
+{
+  "form_id": "matera-pre",
+  "form_version": "v1",
+  "coordinate_space": "absolute_pixel",
+  "reference_dpi": 200,
+  "pages": [
+    {
+      "page_number": 1,
+      "width_px": 1651,
+      "height_px": 2334,
+      "anchors": [
+        {
+          "anchor_id": "top_left_logo",
+          "anchor_type": "template",
+          "bbox": {
+            "x": 74,
+            "y": 24,
+            "w": 296,
+            "h": 117
+          }
+        }
+      ],
+      "rois": [
+        {
+          "question_id": "Q1",
+          "option_id": "a",
+          "bbox": {
+            "x": 133,
+            "y": 264,
+            "w": 28,
+            "h": 31
+          }
+        },
+        {
+          "question_id": "Q1",
+          "option_id": "b",
+          "bbox": {
+            "x": 133,
+            "y": 296,
+            "w": 30,
+            "h": 34
+          }
+        },
+        {
+          "question_id": "Q1",
+          "option_id": "c",
+          "bbox": {
+            "x": 132,
+            "y": 330,
+            "w": 34,
+            "h": 34
+          }
+        },
+        {
+          "question_id": "Q1",
+          "option_id": "d",
+          "bbox": {
+            "x": 133,
+            "y": 365,
+            "w": 35,
+            "h": 34
+          }
+        },
+        {
+          "question_id": "Q1",
+          "option_id": "e",
+          "bbox": {
+            "x": 132,
+            "y": 402,
+            "w": 36,
+            "h": 32
+          }
+        },
+        {
+          "question_id": "Q10",
+          "option_id": "a",
+          "bbox": {
+            "x": 878,
+            "y": 914,
+            "w": 45,
+            "h": 28
+          }
+        },
+        {
+          "question_id": "Q10",
+          "option_id": "b",
+          "bbox": {
+            "x": 879,
+            "y": 947,
+            "w": 47,
+            "h": 32
+          }
+        },
+        {
+          "question_id": "Q10",
+          "option_id": "c",
+          "bbox": {
+            "x": 875,
+            "y": 1009,
+            "w": 51,
+            "h": 36
+          }
+        },
+        {
+          "question_id": "Q10",
+          "option_id": "d",
+          "bbox": {
+            "x": 882,
+            "y": 1071,
+            "w": 48,
+            "h": 38
+          }
+        },
+        {
+          "question_id": "Q10",
+          "option_id": "e",
+          "bbox": {
+            "x": 882,
+            "y": 1110,
+            "w": 45,
+            "h": 46
+          }
+        },
+        {
+          "question_id": "Q11",
+          "option_id": "a",
+          "bbox": {
+            "x": 876,
+            "y": 1242,
+            "w": 45,
+            "h": 38
+          }
+        },
+        {
+          "question_id": "Q11",
+          "option_id": "b",
+          "bbox": {
+            "x": 877,
+            "y": 1283,
+            "w": 45,
+            "h": 32
+          }
+        },
+        {
+          "question_id": "Q11",
+          "option_id": "c",
+          "bbox": {
+            "x": 877,
+            "y": 1350,
+            "w": 47,
+            "h": 37
+          }
+        },
+        {
+          "question_id": "Q11",
+          "option_id": "d",
+          "bbox": {
+            "x": 882,
+            "y": 1415,
+            "w": 44,
+            "h": 43
+          }
+        },
+        {
+          "question_id": "Q11",
+          "option_id": "e",
+          "bbox": {
+            "x": 880,
+            "y": 1479,
+            "w": 44,
+            "h": 42
+          }
+        },
+        {
+          "question_id": "Q12",
+          "option_id": "a",
+          "bbox": {
+            "x": 877,
+            "y": 1649,
+            "w": 48,
+            "h": 37
+          }
+        },
+        {
+          "question_id": "Q12",
+          "option_id": "b",
+          "bbox": {
+            "x": 879,
+            "y": 1687,
+            "w": 43,
+            "h": 35
+          }
+        },
+        {
+          "question_id": "Q12",
+          "option_id": "c",
+          "bbox": {
+            "x": 881,
+            "y": 1724,
+            "w": 48,
+            "h": 29
+          }
+        },
+        {
+          "question_id": "Q12",
+          "option_id": "d",
+          "bbox": {
+            "x": 881,
+            "y": 1755,
+            "w": 46,
+            "h": 35
+          }
+        },
+        {
+          "question_id": "Q12",
+          "option_id": "e",
+          "bbox": {
+            "x": 880,
+            "y": 1790,
+            "w": 51,
+            "h": 37
+          }
+        },
+        {
+          "question_id": "Q13.1",
+          "option_id": "0",
+          "bbox": {
+            "x": 1240,
+            "y": 1981,
+            "w": 28,
+            "h": 37
+          }
+        },
+        {
+          "question_id": "Q13.1",
+          "option_id": "1",
+          "bbox": {
+            "x": 1305,
+            "y": 1986,
+            "w": 23,
+            "h": 31
+          }
+        },
+        {
+          "question_id": "Q13.1",
+          "option_id": "2",
+          "bbox": {
+            "x": 1366,
+            "y": 1984,
+            "w": 22,
+            "h": 34
+          }
+        },
+        {
+          "question_id": "Q13.1",
+          "option_id": "3",
+          "bbox": {
+            "x": 1428,
+            "y": 1986,
+            "w": 24,
+            "h": 32
+          }
+        },
+        {
+          "question_id": "Q13.1",
+          "option_id": "4",
+          "bbox": {
+            "x": 1490,
+            "y": 1984,
+            "w": 26,
+            "h": 35
+          }
+        },
+        {
+          "question_id": "Q13.2",
+          "option_id": "0",
+          "bbox": {
+            "x": 1240,
+            "y": 2018,
+            "w": 27,
+            "h": 36
+          }
+        },
+        {
+          "question_id": "Q13.2",
+          "option_id": "1",
+          "bbox": {
+            "x": 1303,
+            "y": 2020,
+            "w": 25,
+            "h": 34
+          }
+        },
+        {
+          "question_id": "Q13.2",
+          "option_id": "2",
+          "bbox": {
+            "x": 1367,
+            "y": 2022,
+            "w": 24,
+            "h": 32
+          }
+        },
+        {
+          "question_id": "Q13.2",
+          "option_id": "3",
+          "bbox": {
+            "x": 1428,
+            "y": 2021,
+            "w": 25,
+            "h": 32
+          }
+        },
+        {
+          "question_id": "Q13.2",
+          "option_id": "4",
+          "bbox": {
+            "x": 1491,
+            "y": 2022,
+            "w": 24,
+            "h": 37
+          }
+        },
+        {
+          "question_id": "Q14",
+          "option_id": "1",
+          "bbox": {
+            "x": 113,
+            "y": 2161,
+            "w": 36,
+            "h": 36
+          }
+        },
+        {
+          "question_id": "Q14",
+          "option_id": "2",
+          "bbox": {
+            "x": 937,
+            "y": 2153,
+            "w": 34,
+            "h": 38
+          }
+        },
+        {
+          "question_id": "Q14",
+          "option_id": "3",
+          "bbox": {
+            "x": 113,
+            "y": 2197,
+            "w": 37,
+            "h": 36
+          }
+        },
+        {
+          "question_id": "Q14",
+          "option_id": "4",
+          "bbox": {
+            "x": 936,
+            "y": 2191,
+            "w": 38,
+            "h": 37
+          }
+        },
+        {
+          "question_id": "Q2",
+          "option_id": "a",
+          "bbox": {
+            "x": 131,
+            "y": 497,
+            "w": 32,
+            "h": 34
+          }
+        },
+        {
+          "question_id": "Q2",
+          "option_id": "b",
+          "bbox": {
+            "x": 130,
+            "y": 530,
+            "w": 33,
+            "h": 34
+          }
+        },
+        {
+          "question_id": "Q2",
+          "option_id": "c",
+          "bbox": {
+            "x": 129,
+            "y": 565,
+            "w": 37,
+            "h": 36
+          }
+        },
+        {
+          "question_id": "Q2",
+          "option_id": "d",
+          "bbox": {
+            "x": 126,
+            "y": 602,
+            "w": 40,
+            "h": 33
+          }
+        },
+        {
+          "question_id": "Q2",
+          "option_id": "e",
+          "bbox": {
+            "x": 127,
+            "y": 634,
+            "w": 38,
+            "h": 36
+          }
+        },
+        {
+          "question_id": "Q3",
+          "option_id": "a",
+          "bbox": {
+            "x": 128,
+            "y": 734,
+            "w": 35,
+            "h": 35
+          }
+        },
+        {
+          "question_id": "Q3",
+          "option_id": "b",
+          "bbox": {
+            "x": 126,
+            "y": 770,
+            "w": 44,
+            "h": 32
+          }
+        },
+        {
+          "question_id": "Q3",
+          "option_id": "c",
+          "bbox": {
+            "x": 128,
+            "y": 803,
+            "w": 45,
+            "h": 34
+          }
+        },
+        {
+          "question_id": "Q3",
+          "option_id": "d",
+          "bbox": {
+            "x": 129,
+            "y": 837,
+            "w": 40,
+            "h": 33
+          }
+        },
+        {
+          "question_id": "Q3",
+          "option_id": "e",
+          "bbox": {
+            "x": 128,
+            "y": 872,
+            "w": 37,
+            "h": 30
+          }
+        },
+        {
+          "question_id": "Q4",
+          "option_id": "a",
+          "bbox": {
+            "x": 123,
+            "y": 968,
+            "w": 40,
+            "h": 34
+          }
+        },
+        {
+          "question_id": "Q4",
+          "option_id": "b",
+          "bbox": {
+            "x": 124,
+            "y": 1003,
+            "w": 40,
+            "h": 37
+          }
+        },
+        {
+          "question_id": "Q4",
+          "option_id": "c",
+          "bbox": {
+            "x": 122,
+            "y": 1040,
+            "w": 44,
+            "h": 34
+          }
+        },
+        {
+          "question_id": "Q4",
+          "option_id": "d",
+          "bbox": {
+            "x": 122,
+            "y": 1073,
+            "w": 49,
+            "h": 36
+          }
+        },
+        {
+          "question_id": "Q4",
+          "option_id": "e",
+          "bbox": {
+            "x": 123,
+            "y": 1108,
+            "w": 49,
+            "h": 29
+          }
+        },
+        {
+          "question_id": "Q4",
+          "option_id": "f",
+          "bbox": {
+            "x": 123,
+            "y": 1136,
+            "w": 49,
+            "h": 41
+          }
+        },
+        {
+          "question_id": "Q5",
+          "option_id": "a",
+          "bbox": {
+            "x": 127,
+            "y": 1238,
+            "w": 36,
+            "h": 35
+          }
+        },
+        {
+          "question_id": "Q5",
+          "option_id": "b",
+          "bbox": {
+            "x": 125,
+            "y": 1277,
+            "w": 43,
+            "h": 32
+          }
+        },
+        {
+          "question_id": "Q5",
+          "option_id": "c",
+          "bbox": {
+            "x": 127,
+            "y": 1312,
+            "w": 42,
+            "h": 30
+          }
+        },
+        {
+          "question_id": "Q5",
+          "option_id": "d",
+          "bbox": {
+            "x": 124,
+            "y": 1343,
+            "w": 45,
+            "h": 32
+          }
+        },
+        {
+          "question_id": "Q5",
+          "option_id": "e",
+          "bbox": {
+            "x": 126,
+            "y": 1381,
+            "w": 42,
+            "h": 29
+          }
+        },
+        {
+          "question_id": "Q5",
+          "option_id": "f",
+          "bbox": {
+            "x": 125,
+            "y": 1408,
+            "w": 45,
+            "h": 32
+          }
+        },
+        {
+          "question_id": "Q5",
+          "option_id": "g",
+          "bbox": {
+            "x": 123,
+            "y": 1444,
+            "w": 43,
+            "h": 41
+          }
+        },
+        {
+          "question_id": "Q6",
+          "option_id": "a",
+          "bbox": {
+            "x": 124,
+            "y": 1544,
+            "w": 39,
+            "h": 31
+          }
+        },
+        {
+          "question_id": "Q6",
+          "option_id": "b",
+          "bbox": {
+            "x": 125,
+            "y": 1578,
+            "w": 42,
+            "h": 37
+          }
+        },
+        {
+          "question_id": "Q6",
+          "option_id": "c",
+          "bbox": {
+            "x": 126,
+            "y": 1616,
+            "w": 43,
+            "h": 33
+          }
+        },
+        {
+          "question_id": "Q6",
+          "option_id": "d",
+          "bbox": {
+            "x": 125,
+            "y": 1649,
+            "w": 47,
+            "h": 38
+          }
+        },
+        {
+          "question_id": "Q6",
+          "option_id": "e",
+          "bbox": {
+            "x": 124,
+            "y": 1676,
+            "w": 48,
+            "h": 35
+          }
+        },
+        {
+          "question_id": "Q6",
+          "option_id": "f",
+          "bbox": {
+            "x": 124,
+            "y": 1711,
+            "w": 43,
+            "h": 40
+          }
+        },
+        {
+          "question_id": "Q7",
+          "option_id": "a",
+          "bbox": {
+            "x": 122,
+            "y": 1886,
+            "w": 46,
+            "h": 30
+          }
+        },
+        {
+          "question_id": "Q7",
+          "option_id": "b",
+          "bbox": {
+            "x": 122,
+            "y": 1917,
+            "w": 46,
+            "h": 34
+          }
+        },
+        {
+          "question_id": "Q7",
+          "option_id": "c",
+          "bbox": {
+            "x": 120,
+            "y": 1948,
+            "w": 48,
+            "h": 38
+          }
+        },
+        {
+          "question_id": "Q7",
+          "option_id": "d",
+          "bbox": {
+            "x": 124,
+            "y": 2008,
+            "w": 48,
+            "h": 46
+          }
+        },
+        {
+          "question_id": "Q7",
+          "option_id": "e",
+          "bbox": {
+            "x": 125,
+            "y": 2057,
+            "w": 44,
+            "h": 31
+          }
+        },
+        {
+          "question_id": "Q8",
+          "option_id": "a",
+          "bbox": {
+            "x": 884,
+            "y": 272,
+            "w": 37,
+            "h": 39
+          }
+        },
+        {
+          "question_id": "Q8",
+          "option_id": "b",
+          "bbox": {
+            "x": 881,
+            "y": 333,
+            "w": 46,
+            "h": 46
+          }
+        },
+        {
+          "question_id": "Q8",
+          "option_id": "c",
+          "bbox": {
+            "x": 874,
+            "y": 399,
+            "w": 50,
+            "h": 47
+          }
+        },
+        {
+          "question_id": "Q8",
+          "option_id": "d",
+          "bbox": {
+            "x": 888,
+            "y": 467,
+            "w": 38,
+            "h": 43
+          }
+        },
+        {
+          "question_id": "Q9",
+          "option_id": "a",
+          "bbox": {
+            "x": 883,
+            "y": 607,
+            "w": 48,
+            "h": 35
+          }
+        },
+        {
+          "question_id": "Q9",
+          "option_id": "b",
+          "bbox": {
+            "x": 886,
+            "y": 641,
+            "w": 42,
+            "h": 31
+          }
+        },
+        {
+          "question_id": "Q9",
+          "option_id": "c",
+          "bbox": {
+            "x": 885,
+            "y": 676,
+            "w": 41,
+            "h": 34
+          }
+        },
+        {
+          "question_id": "Q9",
+          "option_id": "d",
+          "bbox": {
+            "x": 884,
+            "y": 706,
+            "w": 44,
+            "h": 38
+          }
+        },
+        {
+          "question_id": "Q9",
+          "option_id": "e",
+          "bbox": {
+            "x": 882,
+            "y": 768,
+            "w": 41,
+            "h": 44
+          }
+        }
+      ]
+    }
+  ]
+}

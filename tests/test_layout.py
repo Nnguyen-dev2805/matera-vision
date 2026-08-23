@@ -38,10 +38,18 @@ def test_layout_profile_valid(tmp_path: Path):
                 "width_px": 1000,
                 "height_px": 2000,
                 "anchors": [
-                    {"anchor_id": "a1", "anchor_type": "qr", "bbox": {"x": 10, "y": 10, "w": 50, "h": 50}}
+                    {
+                        "anchor_id": "a1",
+                        "anchor_type": "qr",
+                        "bbox": {"x": 10, "y": 10, "w": 50, "h": 50}
+                    }
                 ],
                 "rois": [
-                    {"question_id": "Q1", "option_id": "opt1", "bbox": {"x": 100, "y": 100, "w": 20, "h": 20}}
+                    {
+                        "question_id": "Q1",
+                        "option_id": "opt1",
+                        "bbox": {"x": 100, "y": 100, "w": 20, "h": 20}
+                    }
                 ]
             }
         ]
@@ -132,7 +140,11 @@ def test_layout_cross_validation_missing_ref(tmp_path: Path):
                 "height_px": 100,
                 "anchors": [],
                 "rois": [
-                    {"question_id": "UNKNOWN", "option_id": "opt1", "bbox": {"x": 10, "y": 10, "w": 10, "h": 10}}
+                    {
+                        "question_id": "UNKNOWN",
+                        "option_id": "opt1",
+                        "bbox": {"x": 10, "y": 10, "w": 10, "h": 10}
+                    }
                 ]
             }
         ]
@@ -171,7 +183,11 @@ def test_layout_validation_out_of_bounds(tmp_path: Path):
                 "height_px": 100,
                 "anchors": [],
                 "rois": [
-                    {"question_id": "Q1", "option_id": "opt1", "bbox": {"x": 90, "y": 90, "w": 20, "h": 20}}
+                    {
+                        "question_id": "Q1",
+                        "option_id": "opt1",
+                        "bbox": {"x": 90, "y": 90, "w": 20, "h": 20}
+                    }
                 ]
             }
         ]
@@ -198,8 +214,16 @@ def test_layout_validation_duplicate_roi(tmp_path: Path):
                 "height_px": 100,
                 "anchors": [],
                 "rois": [
-                    {"question_id": "Q1", "option_id": "opt1", "bbox": {"x": 10, "y": 10, "w": 10, "h": 10}},
-                    {"question_id": "Q1", "option_id": "opt1", "bbox": {"x": 20, "y": 20, "w": 10, "h": 10}}
+                    {
+                        "question_id": "Q1",
+                        "option_id": "opt1",
+                        "bbox": {"x": 10, "y": 10, "w": 10, "h": 10}
+                    },
+                    {
+                        "question_id": "Q1",
+                        "option_id": "opt1",
+                        "bbox": {"x": 20, "y": 20, "w": 10, "h": 10}
+                    }
                 ]
             }
         ]
@@ -328,13 +352,15 @@ def test_load_layout_profile_invalid_fields(tmp_path: Path):
         load_layout_profile(p)
 
     p.write_text(
-        '{"form_id": "f", "pages": [{"page_number": 1, "width_px": 100, "height_px": 100, "anchors": [{}]}]}'
+        '{"form_id": "f", "pages": [{"page_number": 1, '
+        '"width_px": 100, "height_px": 100, "anchors": [{}]}]}'
     )
     with pytest.raises(ProfileValidationError, match="INVALID_FIELD"):  # invalid anchor
         load_layout_profile(p)
 
     p.write_text(
-        '{"form_id": "f", "pages": [{"page_number": 1, "width_px": 100, "height_px": 100, "anchors": [], "rois": [{}]}]}'
+        '{"form_id": "f", "pages": [{"page_number": 1, '
+        '"width_px": 100, "height_px": 100, "anchors": [], "rois": [{}]}]}'
     )
     with pytest.raises(ProfileValidationError, match="INVALID_FIELD"):  # invalid roi
         load_layout_profile(p)

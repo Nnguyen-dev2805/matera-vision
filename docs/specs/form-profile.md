@@ -95,9 +95,9 @@ Invalid configurations must raise a structured `ProfileValidationError`:
 @dataclass
 class ProfileValidationError(Exception):
     profile_path: str
-    field_path: str       # e.g., "pages[0].rois[3].bbox.w"
-    error_code: str       # e.g., "NEGATIVE_DIMENSION", "MISSING_SEMANTIC_REF"
-    reason: str           # e.g., "Width must be > 0"
+    field_path: str  # e.g., "pages[0].rois[3].bbox.w"
+    error_code: str  # e.g., "NEGATIVE_DIMENSION", "MISSING_SEMANTIC_REF"
+    reason: str  # e.g., "Width must be > 0"
 ```
 
 ## Testing Strategy
