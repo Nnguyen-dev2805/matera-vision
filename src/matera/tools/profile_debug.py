@@ -10,11 +10,21 @@ from matera.core.profile import load_semantic_profile
 
 
 def draw_bounding_box(
-    draw: ImageDraw.ImageDraw, bbox: object, label: str, outline_color: str, fill_color: str
+    draw: ImageDraw.ImageDraw,
+    bbox: object,
+    label: str,
+    outline_color: str,
+    scale_x: float = 1.0,
+    scale_y: float = 1.0,
 ) -> None:
     x, y, w, h = bbox.x, bbox.y, bbox.w, bbox.h  # type: ignore
-    draw.rectangle([x, y, x + w, y + h], outline=outline_color, width=2, fill=fill_color)
-    draw.text((x + 2, y - 12), label, fill=outline_color)
+
+    # Scale coordinates
+    sx, sy = x * scale_x, y * scale_y
+    sw, sh = w * scale_x, h * scale_y
+
+    draw.rectangle([sx, sy, sx + sw, sy + sh], outline=outline_color, width=2)
+    draw.text((sx + 2, sy - 12), label, fill=outline_color)
 
 
 def main() -> int:
@@ -25,13 +35,13 @@ def main() -> int:
         "--output-dir", required=True, type=Path, help="Directory to save the debug images"
     )
     parser.add_argument(
-        "--page", type=int, default=None, help="Specific page number to debug (default: all)"
+        "--page-number", type=int, default=None, help="Specific page number to debug (default: all)"
     )
     parser.add_argument(
-        "--image",
+        "--images-dir",
         type=Path,
         default=None,
-        help="Optional background image (if --page is specified)",
+        help="Optional directory containing background images (e.g. page_1.png)",
     )
 
     args = parser.parse_args()
@@ -51,44 +61,63 @@ def main() -> int:
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     pages_to_draw = layout.pages
-    if args.page is not None:
-        pages_to_draw = [p for p in pages_to_draw if p.page_number == args.page]
+    if args.page_number is not None:
+        pages_to_draw = [p for p in pages_to_draw if p.page_number == args.page_number]
         if not pages_to_draw:
-            print(f"Error: Page {args.page} not found in layout profile.", file=sys.stderr)
-            return 1
-
-    if args.image:
-        if args.page is None:
-            print("Error: --image requires --page to be specified", file=sys.stderr)
-            return 1
-        if not args.image.exists():
-            print(f"Error: Background image {args.image} not found.", file=sys.stderr)
+            print(f"Error: Page {args.page_number} not found in layout profile.", file=sys.stderr)
             return 1
 
     for page in pages_to_draw:
-        if args.image and page.page_number == args.page:
-            img = Image.open(args.image).convert("RGBA")
-            if img.width != page.width_px or img.height != page.height_px:
+        scale_x = 1.0
+        scale_y = 1.0
+        img = None
+
+        if args.images_dir:
+            # Try to find background image (e.g., page_1.png or page_001.png)
+            bg_path = args.images_dir / f"page_{page.page_number}.png"
+            if not bg_path.exists():
+                bg_path = args.images_dir / f"page_{page.page_number:03d}.png"
+
+            if bg_path.exists():
+                img = Image.open(bg_path)
+                if img.width != page.width_px or img.height != page.height_px:
+                    scale_x = img.width / page.width_px
+                    scale_y = img.height / page.height_px
+            else:
                 print(
-                    f"Warning: Image dimensions ({img.width}x{img.height}) do not match layout ({page.width_px}x{page.height_px})",
+                    f"Error: Background image not found in {args.images_dir} "
+                    f"for page {page.page_number}.",
                     file=sys.stderr,
                 )
-        else:
-            img = Image.new("RGBA", (page.width_px, page.height_px), (255, 255, 255, 255))
+                return 1
 
-        draw = ImageDraw.Draw(img, "RGBA")
+        if img is None:
+            # Create a blank image with original layout dimensions
+            img = Image.new("RGB", (page.width_px, page.height_px), "white")
 
-        # Draw anchors (Blue)
+        draw = ImageDraw.Draw(img)
+
+        # Draw page bounds (green)
+        draw_bounding_box(
+            draw,
+            type("BBox", (), {"x": 0, "y": 0, "w": page.width_px, "h": page.height_px})(),
+            f"page_{page.page_number:03d}",
+            "green",
+            scale_x,
+            scale_y,
+        )
+
+        # Draw anchors (blue)
         for anchor in page.anchors:
-            label = f"{anchor.anchor_type}: {anchor.anchor_id}"
-            draw_bounding_box(draw, anchor.bbox, label, "blue", (0, 0, 255, 30))
+            label = f"{anchor.anchor_type}:{anchor.anchor_id}"
+            draw_bounding_box(draw, anchor.bbox, label, "blue", scale_x, scale_y)
 
-        # Draw ROIs (Red)
+        # Draw ROIs (red)
         for roi in page.rois:
-            label = f"{roi.question_id}:{roi.option_id}"
-            draw_bounding_box(draw, roi.bbox, label, "red", (255, 0, 0, 30))
+            label = f"{roi.question_id}/{roi.option_id}"
+            draw_bounding_box(draw, roi.bbox, label, "red", scale_x, scale_y)
 
-        output_path = args.output_dir / f"debug_page_{page.page_number}.png"
+        output_path = args.output_dir / f"overlay_page_{page.page_number:03d}.png"
         img.save(output_path)
         print(f"Generated {output_path}")
 
