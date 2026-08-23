@@ -37,13 +37,18 @@ def test_route_page_skeleton():
             ),
         )
     )
-    result = route_page(mark_scores=[], profile=profile, page_number=1)
+    from matera.vision.contracts import MarkScore, ROIFeature
+    from pathlib import Path
+    mock_feature = ROIFeature(0.0, 0.0, 0, 0.0, 0.0)
+    scores = [
+        MarkScore("q1", "o1", 0.1, "circle", "diff", mock_feature, Path("dummy.png")),
+    ]
+    result = route_page(mark_scores=scores, profile=profile, page_number=1)
     
     assert result.form_id == "test"
     assert result.form_version == "v1"
     assert result.page_number == 1
-    assert result.answers == ()
-    assert result.review_tasks == ()
+    assert len(result.answers) == 1
 
 def test_route_page_option_level_scoring():
     profile = FormProfile(
@@ -78,10 +83,11 @@ def test_route_page_option_level_scoring():
     # 1. low (< 0.2)
     # 2. high (>= 0.6)
     # 3. ambiguous (0.2 <= score < 0.6)
+    from pathlib import Path
     scores = [
-        MarkScore("q1", "o1", 0.1, "circle", "diff", mock_feature, None),
-        MarkScore("q1", "o2", 0.8, "circle", "diff", mock_feature, None),
-        MarkScore("q1", "o3", 0.4, "circle", "diff", mock_feature, None),
+        MarkScore("q1", "o1", 0.1, "circle", "diff", mock_feature, Path("dummy.png")),
+        MarkScore("q1", "o2", 0.8, "circle", "diff", mock_feature, Path("dummy.png")),
+        MarkScore("q1", "o3", 0.4, "circle", "diff", mock_feature, Path("dummy.png")),
     ]
 
     config = RoutingConfig(low_threshold=0.2, high_threshold=0.6)
@@ -136,10 +142,10 @@ def test_route_page_over_selection():
     from matera.vision.contracts import MarkScore, ROIFeature
     mock_feature = ROIFeature(0.0, 0.0, 0, 0.0, 0.0)
 
-    # 2 options > 0.6 -> over-selection (max_selections=1)
+    from pathlib import Path
     scores = [
-        MarkScore("q1", "o1", 0.8, "circle", "diff", mock_feature, None),
-        MarkScore("q1", "o2", 0.9, "circle", "diff", mock_feature, None),
+        MarkScore("q1", "o1", 0.8, "circle", "diff", mock_feature, Path("dummy.png")),
+        MarkScore("q1", "o2", 0.9, "circle", "diff", mock_feature, Path("dummy.png")),
     ]
 
     config = RoutingConfig(low_threshold=0.2, high_threshold=0.6)
@@ -181,10 +187,10 @@ def test_route_page_under_selection():
     mock_feature = ROIFeature(0.0, 0.0, 0, 0.0, 0.0)
 
     # 0 options > 0.6 -> under-selection (min_selections=1)
-    # The highest score is 0.15 for o2.
+    from pathlib import Path
     scores = [
-        MarkScore("q1", "o1", 0.1, "circle", "diff", mock_feature, None),
-        MarkScore("q1", "o2", 0.15, "circle", "diff", mock_feature, None),
+        MarkScore("q1", "o1", 0.1, "circle", "diff", mock_feature, Path("dummy.png")),
+        MarkScore("q1", "o2", 0.15, "circle", "diff", mock_feature, Path("dummy.png")),
     ]
 
     config = RoutingConfig(low_threshold=0.2, high_threshold=0.6)
@@ -207,3 +213,60 @@ def test_route_page_under_selection():
     assert "0.150" in rt.reason
 
     assert result.page_status == "review_required"
+
+
+def test_route_page_fail_fast():
+    profile = FormProfile(
+        form_id="test",
+        form_version="v1",
+        questions=(
+            QuestionDef(
+                question_id="q1",
+                response_type="single_select",
+                mark_strategy="circle",
+                options=(
+                    OptionDef(option_id="o1", value=1),
+                    OptionDef(option_id="o2", value=2),
+                ),
+                min_selections=1,
+                max_selections=1
+            ),
+        )
+    )
+
+    from matera.vision.contracts import MarkScore, ROIFeature
+    from pathlib import Path
+    mock_feature = ROIFeature(0.0, 0.0, 0, 0.0, 0.0)
+
+    # 1. Missing MarkScore
+    scores_missing = [
+        MarkScore("q1", "o1", 0.1, "circle", "diff", mock_feature, Path("dummy.png")),
+    ]
+    with pytest.raises(ValueError, match="Missing MarkScore for options: q1.o2"):
+        route_page(mark_scores=scores_missing, profile=profile, page_number=1)
+
+    # 2. Duplicate MarkScore
+    scores_duplicate = [
+        MarkScore("q1", "o1", 0.1, "circle", "diff", mock_feature, Path("dummy.png")),
+        MarkScore("q1", "o2", 0.1, "circle", "diff", mock_feature, Path("dummy.png")),
+        MarkScore("q1", "o1", 0.1, "circle", "diff", mock_feature, Path("dummy.png")),
+    ]
+    with pytest.raises(ValueError, match="Duplicate MarkScore found for q1.o1"):
+        route_page(mark_scores=scores_duplicate, profile=profile, page_number=1)
+
+    # 3. Unknown MarkScore
+    scores_unknown = [
+        MarkScore("q1", "o1", 0.1, "circle", "diff", mock_feature, Path("dummy.png")),
+        MarkScore("q1", "o2", 0.1, "circle", "diff", mock_feature, Path("dummy.png")),
+        MarkScore("q1", "o3", 0.1, "circle", "diff", mock_feature, Path("dummy.png")),
+    ]
+    with pytest.raises(ValueError, match="Unknown or extra MarkScore found for q1.o3"):
+        route_page(mark_scores=scores_unknown, profile=profile, page_number=1)
+
+    # 4. Missing evidence path
+    scores_no_evidence = [
+        MarkScore("q1", "o1", 0.1, "circle", "diff", mock_feature, None),
+        MarkScore("q1", "o2", 0.1, "circle", "diff", mock_feature, Path("dummy.png")),
+    ]
+    with pytest.raises(ValueError, match="Missing evidence_path in MarkScore for q1.o1"):
+        route_page(mark_scores=scores_no_evidence, profile=profile, page_number=1)

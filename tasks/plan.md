@@ -443,9 +443,9 @@ Runtime and contracts
 ##### Task 8.4: Implement validation rules (Fail-fasts)
 **Description:** Ensure missing/duplicate/unknown scores or metadata raise errors before building the page result.
 **Acceptance criteria:**
-- Missing `MarkScore` for profile option raises an error.
-- Unknown/extra `MarkScore` raises an error.
-- Missing `evidence_path` raises an error.
+- [x] Missing `MarkScore` for profile option raises an error.
+- [x] Unknown/extra `MarkScore` raises an error.
+- [x] Missing `evidence_path` raises an error.
 
 ##### Task 8.5: Complete testing and integration
 **Description:** Develop comprehensive unit tests covering all exact boundaries, strategies, and fail-fast scenarios.

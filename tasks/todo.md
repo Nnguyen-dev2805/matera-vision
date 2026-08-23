@@ -80,7 +80,7 @@
   - [x] Task 8.1: Implement RoutingConfig and API scaffolding
   - [x] Task 8.2: Implement Option-level deterministic scoring
   - [x] Task 8.3: Implement Question-level constraints (over/under-selection)
-  - [ ] Task 8.4: Implement validation rules (Fail-fasts)
+  - [x] Task 8.4: Implement validation rules (Fail-fasts)
   - [ ] Task 8.5: Complete testing and integration
 
 ## Checkpoint: Deterministic Baseline

@@ -17,6 +17,29 @@ def route_page(
     """
     config = config or RoutingConfig()
 
+    # Fail-fast validation
+    profile_options = set()
+    for q in profile.questions:
+        for opt in q.options:
+            profile_options.add((q.question_id, opt.option_id))
+
+    provided_options = set()
+    for ms in mark_scores:
+        if not ms.evidence_path:
+            raise ValueError(f"Missing evidence_path in MarkScore for {ms.question_id}.{ms.option_id}")
+            
+        key = (ms.question_id, ms.option_id)
+        if key not in profile_options:
+            raise ValueError(f"Unknown or extra MarkScore found for {ms.question_id}.{ms.option_id}")
+        if key in provided_options:
+            raise ValueError(f"Duplicate MarkScore found for {ms.question_id}.{ms.option_id}")
+        provided_options.add(key)
+
+    missing_options = profile_options - provided_options
+    if missing_options:
+        missing_str = ", ".join(f"{q}.{o}" for q, o in sorted(missing_options))
+        raise ValueError(f"Missing MarkScore for options: {missing_str}")
+
     answers: list[NormalizedAnswer] = []
     review_tasks: list[ReviewTask] = []
 
