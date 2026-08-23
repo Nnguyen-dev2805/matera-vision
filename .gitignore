@@ -32,6 +32,7 @@ MANIFEST
 
 # Matera specific outputs
 data/pages/generated/
+data/golden/images/
 debug/
 *.xlsx
 

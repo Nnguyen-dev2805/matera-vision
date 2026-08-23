@@ -22,11 +22,37 @@
     - [x] Task 3.3.3: Implement output safety matrix tests
     - [x] Task 3.3.4: Implement promotion rollback and cleanup tests
 - [ ] Task 4: Create the first form profile and ROI map
+  - [x] Task 4.1: Implement Profile and Layout Loaders
+  - [x] Task 4.2: Create Profile Debug Overlay Utility
+  - [x] Task 4.3: Form JSON Construction (Profile Authoring)
+    - [x] Task 4.3.1: Create `roi_author.py` annotation GUI
+    - [x] Task 4.3.2: Create `generate_profiles.py` script
+    - [x] Task 4.3.3: Execute authoring, validate, and inspect overlays
 - [ ] Task 5: Create annotations and the golden dataset
 
 ## Checkpoint: Foundation
 
 - [ ] Runtime commands work
+- [x] Task 4.3: Integrate profiles into standard directory structure and evaluate overlays
+  - Acceptance: `layout.json` and `semantic.json` pass schema validation.
+  - Verify: Run overlay script on a real image and verify boxes align with options.
+  - Files: `src/matera/tools/profile_debug.py`, `scripts/`
+
+- [x] Task 5.1: Create golden dataset generation script
+  - Acceptance: Script reads ground truth JSON and layout JSON to accurately label image crops.
+  - Verify: Run script, verify `labels.csv` contains 770 correct entries.
+  - Files: `scripts/build_golden_dataset.py`
+
+- [x] Task 5.2: Create dataset unit tests and logic validation
+  - Acceptance: Tests confirm mapping from index 0/1/2 to options a/b/c is flawless.
+  - Verify: `pytest tests/test_dataset.py` passes.
+  - Files: `tests/test_dataset.py`
+
+- [x] Task 5.3: Update gitignore and produce final dataset
+  - Acceptance: `data/golden/images` is gitignored. The final dataset is cleanly saved.
+  - Verify: `git status` shows the images are ignored.
+  - Files: `.gitignore`, `data/golden/labels.csv`
+
 - [ ] Contracts are documented and validated
 - [ ] Source pages are reproducibly available
 - [ ] Profile overlays cover every question and option

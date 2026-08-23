@@ -216,30 +216,54 @@ Runtime and contracts
 
 **Estimated scope:** Medium
 
-#### Task 5: Create annotations and the golden dataset
+#### Task 5.1: Implement annotation contract and validation logic
 
-**Description:** Manually label selected/unselected options for the available pages and record mark type, difficulty, and reviewer notes. Keep annotation files separate from source and derived images.
+**Description:** Create the core logic to parse `data/ground_truth.json` and map it strictly to `semantic.json` option IDs, raising structured errors on any out-of-bounds indices or missing keys.
 
 **Acceptance criteria:**
 
-- [ ] Every expected option on the available pages has a label.
-- [ ] Ambiguous examples are explicitly identified.
-- [ ] Labels are tied to form profile version and page number.
-- [ ] Dataset split policy is recorded.
+- [ ] Annotation keys (e.g., `Q13_1`) correctly map to semantic keys (`Q13.1`).
+- [ ] Option indices (e.g., `"0"`) perfectly map to `option_id`s in the profile.
+- [ ] Missing pages, missing questions, or out-of-bound indices fail parsing immediately.
 
 **Verification:**
 
-- [ ] Validate annotation completeness against the profile.
-- [ ] Review a sample of annotations independently.
-- [ ] Confirm no page from the evaluation split is used to tune thresholds.
+- [ ] Unit tests for parsing logic pass.
+- [ ] Unit tests for index mapping pass and reject invalid indices.
+- [ ] Manual check: Run validation directly against `data/ground_truth.json` and ensure it passes.
 
 **Dependencies:** Tasks 3 and 4
 
 **Files likely touched:**
 
-- Annotation files
-- Annotation validator
-- `docs/evaluation-plan.md`
+- `src/matera/data/golden.py`
+- `tests/test_golden.py`
+
+**Estimated scope:** Small
+
+#### Task 5.2: Implement ROI cropping and CSV dataset generation
+
+**Description:** Use the validated annotations and `layout.json` coordinates to crop 770 PNG image patches and generate the final `labels.csv` with full audit metadata.
+
+**Acceptance criteria:**
+
+- [x] PNG crops are cleanly extracted without mutating source images.
+- [x] `labels.csv` is populated with `image_file`, `form_id`, `form_version`, `page_number`, `source_page_image`, `bbox_x/y/w/h`, `mark_strategy`, `response_type`, `annotation_source`, `expected_mark`, and `split` (`train`/`dev`).
+- [x] `train` split is assigned to pages 1-5, and `dev` split to pages 6-10.
+
+**Verification:**
+
+- [x] Acceptance test verifies exactly 10 pages, 77 ROIs per page, and 770 rows in CSV on the real profile.
+- [x] Test confirms all expected selected options mapped successfully.
+- [x] Build succeeds: CLI script generates output successfully.
+
+**Dependencies:** Task 5.1
+
+**Files likely touched:**
+
+- `src/matera/data/golden.py`
+- `scripts/build_golden_dataset.py`
+- `tests/test_golden.py`
 
 **Estimated scope:** Medium
 
