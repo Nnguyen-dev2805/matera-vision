@@ -277,31 +277,71 @@ Runtime and contracts
 
 ### Phase 2: Deterministic Vision Baseline
 
-#### Task 6: Implement page alignment
+#### Task 6.1: Alignment contracts and dependencies
 
-**Description:** Align each page to the form profile using configured anchors or template registration, then emit alignment quality and debug overlays.
+**Description:** Add `opencv-python-headless` and `numpy` to `pyproject.toml`. Define the `AlignmentConfig`, `AlignedPage` and `AlignmentError` contracts in `src/matera/vision/contracts.py`.
 
 **Acceptance criteria:**
-
-- [ ] Aligned pages share the profile coordinate system.
-- [ ] Alignment quality is measured and has a failure threshold.
-- [ ] Failed alignment returns a structured error instead of using invalid ROIs.
+- [ ] Dependencies are added to `pyproject.toml` and resolvable.
+- [ ] `AlignmentConfig` supports `algorithm` (orb), `transform_model` (affine), and `inlier_threshold`.
+- [ ] `AlignedPage` and `AlignmentError` are defined.
 
 **Verification:**
-
-- [ ] Test translation, rotation, scale, and representative scan variation.
-- [ ] Inspect overlays for all golden pages.
-- [ ] Test the failed-alignment path.
+- [ ] Install dependencies successfully.
+- [ ] Run `ruff check` on contracts.
 
 **Dependencies:** Tasks 1, 3, and 4
+**Files likely touched:** `pyproject.toml`, `src/matera/vision/contracts.py`
+**Estimated scope:** Small
 
-**Files likely touched:**
+#### Task 6.2: Core ORB feature matching and Affine alignment
 
-- Alignment module
-- Alignment tests
-- Profile/debug utilities
+**Description:** Implement `align_page()` in `src/matera/vision/alignment.py`. It converts images to grayscale, extracts ORB features, matches them, filters with RANSAC, computes an Affine warp matrix, and warps the source image.
 
+**Acceptance criteria:**
+- [ ] Calculates `warp_matrix` mapping from source space to profile coordinate space.
+- [ ] Computes `alignment_score` as the RANSAC inlier ratio.
+- [ ] Output image size perfectly matches the reference dimensions.
+- [ ] Input `RenderedPage` is not mutated.
+
+**Verification:**
+- [ ] Basic unit tests pass for perfect match and identity matrix.
+
+**Dependencies:** Task 6.1
+**Files likely touched:** `src/matera/vision/alignment.py`
 **Estimated scope:** Medium
+
+#### Task 6.3: Comprehensive alignment test suite
+
+**Description:** Write robust unit tests covering all failure modes, determinism, and geometric transformations.
+
+**Acceptance criteria:**
+- [ ] Test translation, rotation, and scale.
+- [ ] Test failure paths: blank page, low-feature page, dimension mismatch.
+- [ ] Test immutability and determinism.
+
+**Verification:**
+- [ ] `pytest tests/test_alignment.py -v` passes with high coverage.
+
+**Dependencies:** Task 6.2
+**Files likely touched:** `tests/test_alignment.py`, `tests/fixtures/`
+**Estimated scope:** Medium
+
+#### Task 6.4: Debug overlays and dataset generation script
+
+**Description:** Create a script to run alignment on all 10 extracted pages, reusing `matera.tools.profile_debug` to draw red ROI bounding boxes on the aligned images and save them safely.
+
+**Acceptance criteria:**
+- [ ] 10 Aligned pages are saved safely using atomic writes to `data/aligned_pages/`.
+- [ ] Red ROI bounding boxes correctly frame the options based on `layout.json`.
+- [ ] Original `data/pages` are never overwritten.
+
+**Verification:**
+- [ ] Run script and manually inspect the 10 generated debug images.
+
+**Dependencies:** Task 6.3
+**Files likely touched:** `scripts/build_aligned_dataset.py`, `src/matera/vision/debug.py` (if needed)
+**Estimated scope:** Small
 
 #### Task 7: Implement mark maps, ROI extraction, and deterministic scores
 
@@ -330,32 +370,89 @@ Runtime and contracts
 
 **Estimated scope:** Medium
 
+##### Task 7.1: Define `ROIFeature` and `MarkScore` contracts
+**Description:** Create frozen dataclasses for `ROIFeature` (numeric features) and `MarkScore` (normalized scores with metadata). Ensure they do not store mutable PIL images.
+**Acceptance criteria:**
+- Contracts are strictly typed and immutable.
+- Image evidence paths are supported via `evidence_path` instead of in-memory objects.
+
+##### Task 7.2: Implement template difference and morphology core
+**Description:** Create the core image processing function that subtracts the `aligned_page` from the `reference_template` and cleans up noise using morphological operations.
+**Acceptance criteria:**
+- `aligned_page == reference_image` produces a near-zero mask.
+- Original images are not mutated.
+
+##### Task 7.3: Implement feature extraction and normalized scoring
+**Description:** Given a cleaned mark map and raw crop, compute `dark_pixel_ratio`, `foreground_area_ratio`, `contour_count`, etc., and map them to a normalized 0.0-1.0 `score`.
+**Acceptance criteria:**
+- Features are deterministic.
+- Clear marks produce scores distinct from blanks.
+
+##### Task 7.4: Implement API resolver and golden dataset tests
+**Description:** Implement `extract_mark_scores` which joins `FormProfile` and `PageLayout` to resolve `mark_strategy` per ROI. Test against `data/golden/labels.csv`.
+**Acceptance criteria:**
+- All 77 ROIs per page are accurately resolved.
+- Golden evaluation test proves score separation (expected 1 vs 0).
+
 #### Task 8: Implement decision and review routing
 
-**Description:** Convert deterministic scores into selected/unselected/review outcomes, enforce question-level validation, and produce structured evidence for every decision.
+**Description:** Convert deterministic scores into selected/unselected/review outcomes, enforce question-level validation, and produce structured evidence for every decision, strictly following the NormalizedPageResult contract.
 
 **Acceptance criteria:**
 
-- [ ] High-confidence and low-confidence thresholds are configurable.
-- [ ] Middle-range cases route to review or classifier input.
-- [ ] No low-confidence case is silently forced to `0` or `1`.
-- [ ] Contradictory or invalid question states are reported.
+- [ ] High-confidence and low-confidence thresholds are configurable via `RoutingConfig`.
+- [ ] Middle-range cases correctly generate `ReviewTask` objects.
+- [ ] Over-selection and under-selection logic properly overrides option statuses.
+- [ ] Invalid data (missing, duplicate) fails fast immediately.
+- [ ] API signature strictly uses standard contracts from `matera.core.contracts`.
 
 **Verification:**
 
-- [ ] Test threshold boundaries and abstention behavior.
-- [ ] Test multi-select, rating-scale, and checkbox rules.
-- [ ] Compare decisions with golden annotations.
+- [ ] Unit tests pass for threshold boundaries.
+- [ ] Unit tests pass for multi-select, rating-scale, over-selection, and under-selection.
+- [ ] Missing score validation is tested.
 
 **Dependencies:** Task 7
 
 **Files likely touched:**
 
-- Decision/router module
-- Validation module
-- Decision and review tests
+- `src/matera/vision/routing.py`
+- `tests/test_routing.py`
 
 **Estimated scope:** Medium
+
+##### Task 8.1: Implement RoutingConfig and API scaffolding
+**Description:** Define `RoutingConfig` with threshold validation, and create the skeleton for `route_page` returning `NormalizedPageResult`.
+**Acceptance criteria:**
+- `RoutingConfig` validates `0 <= low < high <= 1`.
+- `route_page` signature matches the spec.
+
+##### Task 8.2: Implement option-level deterministic scoring
+**Description:** Iterate through `MarkScore`s and evaluate them against the thresholds to determine initial `selected` and `resolution_status`.
+**Acceptance criteria:**
+- Scores < low -> `selected=False`.
+- Scores >= high -> `selected=True`.
+- Scores between low and high -> `selected=None`, status="needs_review", and a pending `ReviewTask` is created.
+
+##### Task 8.3: Implement question-level constraints
+**Description:** Apply over-selection (`> max_selections`) and under-selection (`< min_selections`) constraints per question.
+**Acceptance criteria:**
+- Over-selection sets all `>high` options to `needs_review` + `ReviewTask`.
+- Under-selection sets highest-score option to `needs_review` + `ReviewTask`.
+- Page status bubbles up to `"review_required"` if any review task exists.
+
+##### Task 8.4: Implement validation rules (Fail-fasts)
+**Description:** Ensure missing/duplicate/unknown scores or metadata raise errors before building the page result.
+**Acceptance criteria:**
+- Missing `MarkScore` for profile option raises an error.
+- Unknown/extra `MarkScore` raises an error.
+- Missing `evidence_path` raises an error.
+
+##### Task 8.5: Complete testing and integration
+**Description:** Develop comprehensive unit tests covering all exact boundaries, strategies, and fail-fast scenarios.
+**Acceptance criteria:**
+- Test suite covers all scenarios outlined in the spec's Testing Strategy.
+- Test coverage for `routing.py` is high.
 
 ### Checkpoint: Deterministic Baseline
 

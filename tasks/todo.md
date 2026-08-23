@@ -60,9 +60,28 @@
 
 ## Phase 2: Deterministic Vision Baseline
 
-- [ ] Task 6: Implement page alignment
-- [ ] Task 7: Implement mark maps, ROI extraction, and deterministic scores
+- [x] Task 6: Implement page alignment
+  - [x] Task 6.1: Alignment contracts and dependencies
+  - [x] Task 6.2: Core ORB feature matching and Affine alignment
+  - [x] Task 6.3: Comprehensive alignment test suite
+  - [x] Task 6.4: Debug overlays and dataset generation script
+- [x] Task 7: Implementation: ROI Extraction & Mark Scoring
+  - [x] 7.1. Định nghĩa Data Contracts (`ROIFeature`, `MarkScore`).
+  - [x] 7.2. Implement `create_mark_map` (Template difference + Morphological cleanup).
+  - [x] 7.3. Implement `calculate_features` (Tỷ lệ pixel đen, tỷ lệ diện tích foreground) và `normalize_score` (theo MVP).
+  - [x] 7.4. Implement `extract_mark_scores` (Lặp qua profile layout, map features sang score).
+  - [x] 7.5. Code Review Fixes: 
+    - Đã thêm `numpy`/`opencv-python` vào môi trường.
+    - Sửa lỗi Ruff (type hints, line length, formatting).
+    - Thêm `MarkScoringConfig` thay thế hằng số cứng.
+    - Bổ sung strict validation cho dimension mismatch và unknown strategy.
+    - Cập nhật acceptance test dùng `data/golden/images` (có tiêm synthetic mark do data hiện tại toàn clean page).
 - [ ] Task 8: Implement decision and review routing
+  - [ ] Task 8.1: Implement RoutingConfig and API scaffolding
+  - [ ] Task 8.2: Implement Option-level deterministic scoring
+  - [ ] Task 8.3: Implement Question-level constraints (over/under-selection)
+  - [ ] Task 8.4: Implement validation rules (Fail-fasts)
+  - [ ] Task 8.5: Complete testing and integration
 
 ## Checkpoint: Deterministic Baseline
 

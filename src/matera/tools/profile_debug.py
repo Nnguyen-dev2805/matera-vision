@@ -27,6 +27,37 @@ def draw_bounding_box(
     draw.text((sx + 2, sy - 12), label, fill=outline_color)
 
 
+def draw_profile_overlays_on_image(img: Image.Image, page: object) -> None:
+    """
+    Draws page boundaries, anchors, and ROIs onto the given image in-place.
+    `page` should be a PageLayout object.
+    """
+    draw = ImageDraw.Draw(img)
+    scale_x = img.width / page.width_px
+    scale_y = img.height / page.height_px
+
+    # Draw page bounds (green)
+    draw_bounding_box(
+        draw,
+        type("BBox", (), {"x": 0, "y": 0, "w": page.width_px, "h": page.height_px})(),
+        f"page_{page.page_number:03d}",
+        "green",
+        scale_x,
+        scale_y,
+    )
+
+    # Draw anchors (blue)
+    for anchor in page.anchors:
+        label = f"{anchor.anchor_type}:{anchor.anchor_id}"
+        draw_bounding_box(draw, anchor.bbox, label, "blue", scale_x, scale_y)
+
+    # Draw ROIs (red)
+    for roi in page.rois:
+        label = f"{roi.question_id}/{roi.option_id}"
+        draw_bounding_box(draw, roi.bbox, label, "red", scale_x, scale_y)
+
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate debug overlays for a layout profile.")
     parser.add_argument("--semantic", required=True, type=Path, help="Path to semantic.json")
@@ -109,27 +140,7 @@ def main() -> int:
                 # Create a blank image with original layout dimensions
                 img = Image.new("RGB", (page.width_px, page.height_px), "white")
 
-            draw = ImageDraw.Draw(img)
-
-            # Draw page bounds (green)
-            draw_bounding_box(
-                draw,
-                type("BBox", (), {"x": 0, "y": 0, "w": page.width_px, "h": page.height_px})(),
-                f"page_{page.page_number:03d}",
-                "green",
-                scale_x,
-                scale_y,
-            )
-
-            # Draw anchors (blue)
-            for anchor in page.anchors:
-                label = f"{anchor.anchor_type}:{anchor.anchor_id}"
-                draw_bounding_box(draw, anchor.bbox, label, "blue", scale_x, scale_y)
-
-            # Draw ROIs (red)
-            for roi in page.rois:
-                label = f"{roi.question_id}/{roi.option_id}"
-                draw_bounding_box(draw, roi.bbox, label, "red", scale_x, scale_y)
+            draw_profile_overlays_on_image(img, page)
 
             if bg_path:
                 import re
