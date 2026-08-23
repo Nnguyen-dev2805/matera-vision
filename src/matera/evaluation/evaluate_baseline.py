@@ -1,10 +1,18 @@
 import argparse
 import csv
+import json
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
+from matera.core.contracts import RoutingConfig
 from matera.core.profile import load_semantic_profile
+from matera.data.loader import load_page_image
+from matera.evaluation.metrics import ConfusionMatrix
+from matera.evaluation.report import EvaluationReport
+from matera.vision.alignment import TemplateAligner
+from matera.vision.mark import calculate_mark_scores
+from matera.vision.routing import route_page
 
 
 @dataclass
@@ -44,13 +52,135 @@ def run_evaluation(dataset_path: Path, output_path: Path) -> None:
     profile = load_semantic_profile(Path("profiles/matera-pre/v1/semantic.json"))
     print(f"Loaded profile: {profile.form_id} {profile.form_version}")
 
-    # 2. Pipeline loop
-    # For Task 10.2, just print out the loop. Real logic in 10.3.
-    for page_image, expected_answers in dataset.items():
-        print(f"Processing {page_image} with {len(expected_answers)} expected answers...")
-        # Stub for alignment, scoring, routing...
+    # Initialize pipeline
+    aligner = TemplateAligner(reference_image_path=Path("data/pages/page_1.png"))
+    routing_config = RoutingConfig(confidence_threshold=0.8, ambiguity_margin=0.2)
 
-    print("Done.")
+    report = EvaluationReport()
+
+    # Create debug dir
+    debug_dir = Path("data/debug/errors")
+    debug_dir.mkdir(parents=True, exist_ok=True)
+
+    # 2. Pipeline loop
+    for page_image_name, expected_answers in dataset.items():
+        print(f"Processing {page_image_name}...")
+
+        # Load image
+        img_path = Path("data/golden/images") / page_image_name
+        if not img_path.exists():
+            print(f"Warning: Image {img_path} not found. Skipping.")
+            continue
+
+        page_image = load_page_image(img_path)
+
+        # Run Pipeline
+        try:
+            aligned_page = aligner.align(page_image)
+            mark_scores = calculate_mark_scores(aligned_page, profile)
+            normalized_result = route_page(mark_scores, profile, routing_config)
+        except Exception as e:
+            print(f"Pipeline error on {page_image_name}: {e}")
+            continue
+
+        # 3. Metric Comparison
+        result_map = {
+            (ans.answer_key.question_id, ans.answer_key.option_id): ans
+            for ans in normalized_result.answers
+        }
+
+        page_cm = ConfusionMatrix()
+        page_errors = 0
+        page_reviews = 0
+
+        for expected in expected_answers:
+            key = (expected.question_id, expected.option_id)
+            ans = result_map.get(key)
+
+            resp_type = expected.response_type
+            if resp_type not in report.by_response_type:
+                report.by_response_type[resp_type] = ConfusionMatrix()
+
+            if ans is None or ans.resolution_status == "needs_review":
+                page_cm.needs_review += 1
+                report.overall_metrics.needs_review += 1
+                report.by_response_type[resp_type].needs_review += 1
+                page_reviews += 1
+                continue
+
+            # Calculate TP/TN/FP/FN
+            selected = 1 if ans.selected else 0
+
+            if expected.expected_mark == 1 and selected == 1:
+                page_cm.tp += 1
+                report.overall_metrics.tp += 1
+                report.by_response_type[resp_type].tp += 1
+            elif expected.expected_mark == 0 and selected == 0:
+                page_cm.tn += 1
+                report.overall_metrics.tn += 1
+                report.by_response_type[resp_type].tn += 1
+            elif expected.expected_mark == 0 and selected == 1:
+                page_cm.fp += 1
+                report.overall_metrics.fp += 1
+                report.by_response_type[resp_type].fp += 1
+                page_errors += 1
+            elif expected.expected_mark == 1 and selected == 0:
+                page_cm.fn += 1
+                report.overall_metrics.fn += 1
+                report.by_response_type[resp_type].fn += 1
+                page_errors += 1
+
+        # Check for exact match
+        report.total_pages += 1
+        if page_errors == 0 and page_reviews == 0:
+            report.exact_match_pages += 1
+
+    # Save JSON report
+    report_dict = {
+        "overall": {
+            "tp": report.overall_metrics.tp,
+            "tn": report.overall_metrics.tn,
+            "fp": report.overall_metrics.fp,
+            "fn": report.overall_metrics.fn,
+            "needs_review": report.overall_metrics.needs_review,
+            "f1_score": report.overall_metrics.f1_score,
+            "fpr": report.overall_metrics.fpr,
+            "fnr": report.overall_metrics.fnr,
+            "coverage": report.overall_metrics.coverage,
+            "risk": report.overall_metrics.risk,
+            "review_rate": report.overall_metrics.review_rate,
+        },
+        "page_exact_match_rate": report.page_exact_match_rate,
+        "by_response_type": {},
+    }
+
+    for rt, cm in report.by_response_type.items():
+        report_dict["by_response_type"][rt] = {
+            "tp": cm.tp,
+            "tn": cm.tn,
+            "fp": cm.fp,
+            "fn": cm.fn,
+            "needs_review": cm.needs_review,
+            "f1_score": cm.f1_score,
+            "fpr": cm.fpr,
+            "fnr": cm.fnr,
+            "coverage": cm.coverage,
+            "risk": cm.risk,
+            "review_rate": cm.review_rate,
+        }
+
+    # Pretty print some stuff
+    print("\n--- Evaluation Results ---")
+    print(f"Total Pages: {report.total_pages}")
+    print(f"Page Exact Match (STP): {report.page_exact_match_rate:.2%}")
+    print(f"Global F1 Score: {report.overall_metrics.f1_score:.2%}")
+    print(f"Global Coverage: {report.overall_metrics.coverage:.2%}")
+    print(f"Global Risk: {report.overall_metrics.risk:.2%}")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w") as f:
+        json.dump(report_dict, f, indent=2)
+    print(f"\nReport saved to {output_path}")
 
 
 def main() -> None:

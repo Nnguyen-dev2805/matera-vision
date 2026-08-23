@@ -114,7 +114,7 @@
     - Acceptance: `evaluate_baseline.py` can load `labels.csv`, load the `FormProfile`, and execute the pipeline loop over unique page images.
     - Verify: `ruff check` passes. Can load dummy data.
     - Files: `src/matera/evaluation/evaluate_baseline.py`
-  - [ ] Task 10.3: Implement metric comparison and report generation
+  - [x] Task 10.3: Implement metric comparison and report generation
     - Acceptance: Script correctly tallies TP/TN/FP/FN/Review, handles strict page-level exact match definition, and groups by `response_type`. Outputs JSON.
     - Verify: Test with golden dataset outputs a valid JSON report.
     - Files: `src/matera/evaluation/evaluate_baseline.py`
