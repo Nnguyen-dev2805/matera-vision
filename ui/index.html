@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Matera OMR - Automated Questionnaire Extraction</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-root">
+    <!-- Top App Navigation -->
+    <header class="app-header">
+      <div class="header-container">
+        <div class="brand">
+          <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="9" y1="9" x2="15" y2="9"></line>
+            <line x1="9" y1="15" x2="15" y2="15"></line>
+          </svg>
+          <span class="brand-name">Matera OMR</span>
+        </div>
+
+        <div class="header-actions">
+          <button type="button" id="btn-load-sample" class="btn-subtle">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+            <span>Load Sample (10 Pages)</span>
+          </button>
+          <button type="button" id="btn-new-batch" class="btn-subtle" style="display: none;">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            <span>New Batch</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Workspace Area -->
+    <main class="workspace-main">
+      <div class="content-container">
+        <!-- Hidden Native Folder Picker Input -->
+        <input type="file" id="folder-file-input" webkitdirectory directory multiple style="display: none;">
+
+        <!-- Step 1: Folder Selection Dropzone (Visible by default) -->
+        <section id="selection-stage" class="stage-section">
+          <div class="upload-dropzone" id="upload-dropzone">
+            <div class="dropzone-inner">
+              <div class="folder-icon-circle">
+                <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                  <line x1="12" y1="11" x2="12" y2="17"></line>
+                  <polyline points="9 14 12 11 15 14"></polyline>
+                </svg>
+              </div>
+
+              <div class="dropzone-text-group">
+                <h2 class="dropzone-heading">Select PDF Folder</h2>
+                <p class="dropzone-subheading">Choose a folder on your computer or drag & drop it here</p>
+              </div>
+
+              <div class="dropzone-btn-row">
+                <button type="button" id="btn-browse-trigger" class="btn-primary-black">
+                  <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                  <span>Browse Folder</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Step 2: Selected Folder Banner & Run Trigger (Appears when folder selected) -->
+        <section id="ready-stage" class="stage-section" style="display: none;">
+          <div class="ready-banner">
+            <div class="ready-info">
+              <div class="folder-avatar">
+                <svg class="icon-md" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+              </div>
+              <div class="ready-text">
+                <div class="ready-title-row">
+                  <h3 class="folder-name-title" id="ready-folder-name">Folder Name</h3>
+                  <span class="badge-count" id="ready-file-count">0 PDFs</span>
+                </div>
+                <p class="ready-desc" id="ready-folder-desc">Ready to process all pages and export results to Excel.</p>
+              </div>
+            </div>
+
+            <div class="ready-actions" style="display: flex; align-items: center; gap: 16px;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; color: #3f3f46; font-weight: 500;">
+                <input type="checkbox" id="checkbox-debug" style="width: 16px; height: 16px; cursor: pointer;">
+                <span>Visual Debug Mode</span>
+              </label>
+              <button type="button" id="btn-change-folder" class="btn-ghost">Change</button>
+              <button type="button" id="btn-start-extract" class="btn-primary-black">
+                <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                <span>Start Extraction</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Step 3: Live Progress & Results Table (Appears during/after extraction) -->
+        <section id="progress-stage" class="stage-section" style="display: none;">
+          <!-- Progress Bar & Status -->
+          <div class="progress-card">
+            <div class="progress-header">
+              <div class="progress-status">
+                <span class="live-dot" id="live-dot"></span>
+                <span id="progress-status-text" class="status-msg">Extracting data from pages...</span>
+              </div>
+              <span id="progress-percent" class="percent-tag">0%</span>
+            </div>
+            <div class="progress-track">
+              <div id="progress-fill" class="progress-fill" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <!-- Summary Metric Pills -->
+          <div class="metric-strip">
+            <div class="metric-pill">
+              <span class="metric-label">Documents</span>
+              <strong class="metric-val" id="kpi-files">0</strong>
+            </div>
+            <div class="metric-pill">
+              <span class="metric-label">Pages Processed</span>
+              <strong class="metric-val" id="kpi-pages">0</strong>
+            </div>
+            <div class="metric-pill">
+              <span class="metric-label">Answers Extracted</span>
+              <strong class="metric-val" id="kpi-answers">0</strong>
+            </div>
+            <div class="metric-pill warning">
+              <span class="metric-label">Review Tasks</span>
+              <strong class="metric-val" id="kpi-reviews">0</strong>
+            </div>
+          </div>
+
+          <!-- Tabular Results Table -->
+          <div class="results-table-card">
+            <div class="table-toolbar">
+              <span class="table-heading">Processed Pages</span>
+              <div class="table-tabs">
+                <button type="button" class="tab-btn active" data-filter="all">All (<span id="count-all">0</span>)</button>
+                <button type="button" class="tab-btn" data-filter="resolved">Automated (<span id="count-resolved">0</span>)</button>
+                <button type="button" class="tab-btn" data-filter="needs_review">Review Required (<span id="count-review">0</span>)</button>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th style="width: 60px;">#</th>
+                    <th>Document</th>
+                    <th style="width: 80px;">Page</th>
+                    <th>Extracted Option Identifiers</th>
+                    <th style="width: 100px;">Latency</th>
+                    <th style="width: 140px;">Status</th>
+                    <th style="width: 90px;">Review</th>
+                  </tr>
+                </thead>
+                <tbody id="table-body">
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Floating Bottom Action Bar (Appears when completed) -->
+    <div id="floating-bar" class="floating-bar" style="display: none;">
+      <div class="bar-content">
+        <div class="bar-left">
+          <div class="badge-success-circle">
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          </div>
+          <div>
+            <strong class="bar-title">Extraction Complete</strong>
+            <span class="bar-subtitle" id="footer-excel-path">data/test/matera_results.xlsx</span>
+          </div>
+        </div>
+
+        <div class="bar-right">
+          <button type="button" id="btn-reset-all" class="btn-ghost">New Scan</button>
+          <a href="#" id="btn-download-excel" class="btn-primary-black" download>
+            <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            <span>Download Excel (.xlsx)</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Debug Modal -->
+  <div id="debug-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 9999; justify-content: center; align-items: center; padding: 24px;">
+    <div style="background: #fff; border-radius: 8px; width: 100%; max-width: 1200px; max-height: 95vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);">
+      <div style="padding: 16px 24px; border-bottom: 1px solid #e4e4e7; display: flex; justify-content: space-between; align-items: center;">
+        <h3 id="debug-modal-title" style="margin: 0; font-size: 16px; font-weight: 600; color: #18181b;">Visual Debug Image</h3>
+        <button type="button" id="btn-close-modal" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #71717a;">&times;</button>
+      </div>
+      <div id="debug-modal-content" style="padding: 24px; overflow-y: auto; text-align: center; background: #f4f4f5; flex-grow: 1; display: flex; flex-direction: column; gap: 32px;">
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>

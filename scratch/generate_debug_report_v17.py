@@ -185,10 +185,10 @@ def main():
     median_ref = Image.open("scratch/synthetic_median_reference.png")
     ref_bgr = cv2.cvtColor(np.array(median_ref), cv2.COLOR_RGB2BGR)
     
-    with open("data/ground_truth.json", "r", encoding="utf-8") as f:
+    with open("data/example/ground_truth.json", "r", encoding="utf-8") as f:
         gt_all = json.load(f)
     
-    pages = list(extract_pages(Path("data/pdfs/matera-example.pdf")))
+    pages = list(extract_pages(Path("data/example/matera-example.pdf")))
     acfg = AlignmentConfig(algorithm="orb", transform_model="affine", inlier_threshold=0.05)
     
     all_results = []

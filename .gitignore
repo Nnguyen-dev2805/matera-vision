@@ -41,6 +41,7 @@ data/test/
 data/evaluation/*_report.json
 debug/
 .tmp/
+.tmp_uploads/
 *.xlsx
 
 # Pytest / Coverage

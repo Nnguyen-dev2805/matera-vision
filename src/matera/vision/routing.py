@@ -33,10 +33,6 @@ def route_page(
     provided_options = set()
     score_by_key = {}
     for ms in mark_scores:
-        if not ms.evidence_path:
-            raise ValueError(
-                f"Missing evidence_path in MarkScore for {ms.question_id}.{ms.option_id}"
-            )
 
         key = (ms.question_id, ms.option_id)
         if key not in profile_options:
