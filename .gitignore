@@ -31,12 +31,16 @@ share/python-wheels/
 MANIFEST
 
 # Matera specific outputs
-data/pages/generated/
-data/pages/page_*.png
-!data/pages/page_1.png
+data/pages/
 data/aligned_pages/
 data/golden/images/
+data/debug/
+data/output/
+data/dataset/
+data/test/
+data/evaluation/*_report.json
 debug/
+.tmp/
 *.xlsx
 
 # Pytest / Coverage

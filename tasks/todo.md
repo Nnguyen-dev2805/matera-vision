@@ -1,155 +1,97 @@
-# Matera Vision Task List
+# Implementation Tasks: Refactor V17 into src/matera
 
-## Phase 0: Contracts And Foundation
+## Phase 1: Foundation (AI Classifier)
 
-- [x] Task 1: Choose runtime and scaffold the project
-- [ ] Task 2: Define the data contracts
-  - [x] Task 2.1: Implement core semantic results (`AnswerKey`, `NormalizedAnswer`, `ReviewTask`, `NormalizedPageResult`) and tests
-  - [x] Task 2.2: Implement semantic profile contracts (`OptionDef`, `QuestionDef`, `FormProfile`) and tests
-  - [x] Task 2.3: Implement Excel schema mapping contracts (`ColumnDef`, `ExcelSchema`) and tests
+### Task 1: Migrate HOG+SVM Model Loader
+**Description:** Move the loading of `shape_classifier.pkl` and `extract_hog_features` from `scratch/eval_v17_final.py` into `src/matera/classifier/model.py`.
+**Acceptance criteria:**
+- [x] `AmbiguityClassifier` class initializes the SVM model instead of the old 5-feature model.
+- [x] `extract_hog_features` is correctly implemented and exposed.
+**Verification:**
+- [x] Manual check: Load the model via python interactive shell and run a dummy prediction.
+**Dependencies:** None
+**Files likely touched:** `src/matera/classifier/model.py`
+**Estimated scope:** Small
 
-## Phase 1: Dataset And Profile Foundation
+## Phase 2: Core Vision Pipeline (`mark.py`)
 
-- [ ] Task 3: Build reproducible page extraction
-  - [x] Task 3.1: Implement dataset contracts and IO layer
-  - [x] Task 3.2: Implement extraction pipeline and CLI
-    - [x] Task 3.2.1: Core Extraction Logic
-    - [x] Task 3.2.2: Atomic Promotion
-    - [x] Task 3.2.3: CLI Entrypoint
-  - [x] Task 3.3: Implement comprehensive extraction tests
-    - [x] Task 3.3.1: Implement invariant and basic CLI tests
-    - [x] Task 3.3.2: Implement canonical manifest equivalence test
-    - [x] Task 3.3.3: Implement output safety matrix tests
-    - [x] Task 3.3.4: Implement promotion rollback and cleanup tests
-- [ ] Task 4: Create the first form profile and ROI map
-  - [x] Task 4.1: Implement Profile and Layout Loaders
-  - [x] Task 4.2: Create Profile Debug Overlay Utility
-  - [x] Task 4.3: Form JSON Construction (Profile Authoring)
-    - [x] Task 4.3.1: Create `roi_author.py` annotation GUI
-    - [x] Task 4.3.2: Create `generate_profiles.py` script
-    - [x] Task 4.3.3: Execute authoring, validate, and inspect overlays
-- [ ] Task 5: Create annotations and the golden dataset
+### Task 2: Implement Global Enclosure & Local Radial
+**Description:** Port `run_v11_global_topology` and `get_local_roi_crops` into `mark.py`.
+**Acceptance criteria:**
+- [x] Helper functions for Tầng 1 (Convex Hull) and Tầng 2 (Radial Angular Coverage) are cleanly available.
+- [x] All geometric constants (e.g., `180` degrees, padding) are preserved.
+**Verification:**
+- [x] Build succeeds: `python -m py_compile src/matera/vision/mark.py`
+**Dependencies:** None
+**Files likely touched:** `src/matera/vision/mark.py`
+**Estimated scope:** Medium
 
-## Checkpoint: Foundation
+### Task 3: Implement Layer 1/2/3 Fallback for Q14 and Ambiguous
+**Description:** Port `get_local_roi_crops_hsv` and `process_roi_hsv_ai` into `mark.py`, integrating the classifier from Task 1.
+**Acceptance criteria:**
+- [x] HSV thresholding and pixel counting logic is ported.
+- [x] Function calls `AmbiguityClassifier` to get HOG+SVM prediction for ambiguous cases.
+**Verification:**
+- [x] Build succeeds: `python -m py_compile src/matera/vision/mark.py`
+**Dependencies:** Task 1, Task 2
+**Files likely touched:** `src/matera/vision/mark.py`
+**Estimated scope:** Medium
 
-- [ ] Runtime commands work
-- [x] Task 4.3: Integrate profiles into standard directory structure and evaluate overlays
-  - Acceptance: `layout.json` and `semantic.json` pass schema validation.
-  - Verify: Run overlay script on a real image and verify boxes align with options.
-  - Files: `src/matera/tools/profile_debug.py`, `scripts/`
+### Task 4: Integrate Pipeline into `extract_mark_scores`
+**Description:** Wire the global, local, and fallback functions inside the main `extract_mark_scores` pipeline.
+**Acceptance criteria:**
+- [x] `extract_mark_scores` executes Global Hull -> Local Radial -> AI Fallback based on question types (Q1-Q13 vs Q14).
+- [x] Output is mapped correctly to `list[MarkScore]` objects with `decision_source` populated.
+**Verification:**
+- [x] Build succeeds: `python -m py_compile src/matera/vision/mark.py`
+**Dependencies:** Task 2, Task 3
+**Files likely touched:** `src/matera/vision/mark.py`
+**Estimated scope:** Medium
 
-- [x] Task 5.1: Create golden dataset generation script
-  - Acceptance: Script reads ground truth JSON and layout JSON to accurately label image crops.
-  - Verify: Run script, verify `labels.csv` contains 770 correct entries.
-  - Files: `scripts/build_golden_dataset.py`
+## Checkpoint 1: Core Pipeline
+- [x] Core vision functions are ported and compile successfully.
+- [x] Classifier is correctly integrated.
 
-- [x] Task 5.2: Create dataset unit tests and logic validation
-  - Acceptance: Tests confirm mapping from index 0/1/2 to options a/b/c is flawless.
-  - Verify: `pytest tests/test_dataset.py` passes.
-  - Files: `tests/test_dataset.py`
+## Phase 3: Clean up & Integration
 
-- [x] Task 5.3: Update gitignore and produce final dataset
-  - Acceptance: `data/golden/images` is gitignored. The final dataset is cleanly saved.
-  - Verify: `git status` shows the images are ignored.
-  - Files: `.gitignore`, `data/golden/labels.csv`
+### Task 5: Remove Obsolete Router
+**Description:** Delete `hybrid_routing.py` since AI is now directly inside `mark.py`.
+**Acceptance criteria:**
+- [x] `src/matera/vision/hybrid_routing.py` is removed.
+- [x] No import errors from other modules.
+**Verification:**
+- [ ] Build succeeds: `pytest` or Python syntax check on `src/matera/`.
+**Dependencies:** Task 4
+**Files likely touched:** `src/matera/vision/hybrid_routing.py`, `src/matera/main.py`
+**Estimated scope:** XS
 
-- [ ] Contracts are documented and validated
-- [ ] Source pages are reproducibly available
-- [ ] Profile overlays cover every question and option
-- [ ] Golden annotations are complete enough to measure a baseline
+### Task 6: Refactor Streamlit App
+**Description:** Port `scratch/streamlit_app_v17.py` to `src/matera/ui/dashboard.py` calling the clean `mark.py` API.
+**Acceptance criteria:**
+- [x] Dashboard logic uses `extract_mark_scores` instead of duplicating CV functions.
+- [x] All visual debugging components work as before.
+**Verification:**
+- [ ] Manual check: Run `python -m streamlit run src/matera/ui/dashboard.py` and verify it loads the 10-page dataset.
+**Dependencies:** Task 4
+**Files likely touched:** `src/matera/ui/dashboard.py`, `scratch/streamlit_app_v17.py`
+**Estimated scope:** Medium
 
-## Phase 2: Deterministic Vision Baseline
+## Checkpoint 2: End-to-end UI
+- [ ] UI runs and extracts marks correctly using the official package.
 
-- [x] Task 6: Implement page alignment
-  - [x] Task 6.1: Alignment contracts and dependencies
-  - [x] Task 6.2: Core ORB feature matching and Affine alignment
-  - [x] Task 6.3: Comprehensive alignment test suite
-  - [x] Task 6.4: Debug overlays and dataset generation script
-- [x] Task 7: Implementation: ROI Extraction & Mark Scoring
-  - [x] 7.1. Định nghĩa Data Contracts (`ROIFeature`, `MarkScore`).
-  - [x] 7.2. Implement `create_mark_map` (Template difference + Morphological cleanup).
-  - [x] 7.3. Implement `calculate_features` (Tỷ lệ pixel đen, tỷ lệ diện tích foreground) và `normalize_score` (theo MVP).
-  - [x] 7.4. Implement `extract_mark_scores` (Lặp qua profile layout, map features sang score).
-  - [x] 7.5. Code Review Fixes: 
-    - Đã thêm `numpy`/`opencv-python` vào môi trường.
-    - Sửa lỗi Ruff (type hints, line length, formatting).
-    - Thêm `MarkScoringConfig` thay thế hằng số cứng.
-    - Bổ sung strict validation cho dimension mismatch và unknown strategy.
-    - Cập nhật acceptance test dùng `data/golden/images` (có tiêm synthetic mark do data hiện tại toàn clean page).
-- [x] Task 8: Implement decision and review routing
-  - [x] Task 8.1: Implement RoutingConfig and API scaffolding
-  - [x] Task 8.2: Implement Option-level deterministic scoring
-  - [x] Task 8.3: Implement Question-level constraints (over/under-selection)
-  - [x] Task 8.4: Implement validation rules (Fail-fasts)
-  - [x] Task 8.5: Complete testing and integration
+## Phase 4: Verification
 
-## Checkpoint: Deterministic Baseline
+### Task 7: Test & Validation
+**Description:** Run pipeline on matera-example.pdf to verify end-to-end functionality.
+**Acceptance criteria:**
+- [x] Execution script runs without crashing.
+- [x] Output Excel and Walkthrough artifact are generated successfully.
+**Verification:**
+- [x] Run the script: `python src/matera/main.py process`
+**Dependencies:** Task 6
+**Files likely touched:** `src/matera/evaluation/evaluate_baseline.py`
+**Estimated scope:** Small
 
-- [ ] Rules-only pipeline processes the fixture PDF
-- [ ] Debug evidence is inspectable
-- [ ] Baseline metrics are recorded
-- [ ] Main error categories are known
-
-## Phase 3: Normalized Output And Baseline Evaluation
-
-- [ ] Task 9: Implement normalized answers and Excel export
-  - [x] Task 9.1: Add dependencies and basic export scaffolding
-    - Acceptance: `openpyxl` is added to `pyproject.toml` and resolvable. The module `matera.export` is scaffolded.
-    - Verify: `ruff check` passes. Test skeleton runs successfully.
-    - Files: `pyproject.toml`, `src/matera/export/__init__.py`, `src/matera/export/excel.py`, `tests/test_export.py`
-  - [x] Task 9.2: Implement dynamic header generation and result flattening
-    - Acceptance: `generate_headers` produces exact columns from `FormProfile` plus `page_status` and `review_tasks`. `flatten_result` maps True/False/None correctly.
-    - Verify: `pytest tests/test_export.py` passes unit tests for mapping logic.
-    - Files: `src/matera/export/excel.py`, `tests/test_export.py`
-  - [x] Task 9.3: Implement Excel file generation logic
-    - Acceptance: `export_to_excel` correctly outputs the data to `.xlsx`.
-    - Verify: Test writes an `.xlsx` to a temporary directory and re-reads it successfully.
-    - Files: `src/matera/export/excel.py`, `tests/test_export.py`
-- [ ] Task 10: Build the evaluation harness
-  - [x] Task 10.1: Implement metrics mathematical module
-    - Acceptance: `matera.evaluation.metrics` and `report` are created with `ConfusionMatrix` and related logic. Div-by-zero is safely handled.
-    - Verify: Unit tests in `tests/test_evaluation.py` pass for all math functions.
-    - Files: `src/matera/evaluation/__init__.py`, `src/matera/evaluation/metrics.py`, `src/matera/evaluation/report.py`, `tests/test_evaluation.py`
-  - [x] Task 10.2: Implement evaluation CLI harness and data loading
-    - Acceptance: `evaluate_baseline.py` can load `labels.csv`, load the `FormProfile`, and execute the pipeline loop over unique page images.
-    - Verify: `ruff check` passes. Can load dummy data.
-    - Files: `src/matera/evaluation/evaluate_baseline.py`
-  - [x] Task 10.3: Implement metric comparison and report generation
-    - Acceptance: Script correctly tallies TP/TN/FP/FN/Review, handles strict page-level exact match definition, and groups by `response_type`. Outputs JSON.
-    - Verify: Test with golden dataset outputs a valid JSON report.
-    - Files: `src/matera/evaluation/evaluate_baseline.py`
-  - [x] Task 10.4: Implement debug image generation
-    - Acceptance: For any FP, FN, or Review item, the script draws colored bounding boxes and saves the image to `data/debug/errors/`.
-    - Verify: Inspect `data/debug/errors/` manually for correct overlays.
-    - Files: `src/matera/evaluation/evaluate_baseline.py`
-
-## Checkpoint: End-To-End Baseline
-
-- [ ] PDF input produces validated XLSX output
-- [ ] Baseline metrics and error categories are recorded
-- [ ] Classifier value can be assessed
-
-## Phase 4: Ambiguity Classifier And Hybrid Integration
-
-- [ ] Task 11: Prepare ambiguous-ROI training data
-- [ ] Task 12: Train and evaluate a lightweight feature classifier
-- [ ] Task 13: Integrate and calibrate the hybrid router
-
-## Checkpoint: Hybrid MVP
-
-- [ ] Hybrid pipeline meets agreed pilot targets
-- [ ] Low-confidence cases are reviewable
-- [ ] Model/profile versions are captured
-- [ ] Classifier adds measurable value
-
-## Phase 5: Operational Hardening
-
-- [ ] Task 14: Add the first user-facing execution interface
-- [ ] Task 15: Add regression, reproducibility, and quality gates
-
-## Checkpoint: Complete
-
-- [ ] All acceptance criteria and evaluation gates pass
-- [ ] Fixed-form workflow is documented
-- [ ] Known limitations and review policy are documented
-- [ ] A future form profile can be added without changing core answer semantics
+## Checkpoint 3: Complete
+- [ ] Accuracy is 94.68%.
+- [ ] Ready for review.

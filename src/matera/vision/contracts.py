@@ -59,11 +59,19 @@ class AlignmentError(Exception):
 class ROIFeature:
     """Interpretable, deterministic geometric and pixel measurements for a single ROI."""
 
-    dark_pixel_ratio: float
-    foreground_area_ratio: float
-    contour_count: int
-    largest_component_ratio: float
-    bbox_fill_ratio: float
+    blue_ratio: float
+    dark_ratio: float
+    margin_detected: bool
+    enclosed: bool
+
+
+@dataclass(frozen=True)
+class QuestionMarginResult:
+    """Result of scanning the left margin of a question for enclosing circles/ovals."""
+
+    question_id: str
+    detected_option_ids: list[str]
+    has_ink_in_margin: bool
 
 
 @dataclass(frozen=True)
@@ -76,6 +84,7 @@ class MarkScore:
     strategy: str
     method: str
     features: ROIFeature
+    image_crop: Image.Image | None = None
     evidence_path: Path | None = None
 
     def __post_init__(self):

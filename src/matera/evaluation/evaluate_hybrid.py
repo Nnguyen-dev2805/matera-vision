@@ -58,13 +58,14 @@ def run_evaluation(dataset_path: Path, output_path: Path) -> None:
     print(f"Loaded semantic profile: {profile.form_id} {profile.form_version}")
 
     # Initialize pipeline configs
-    reference_img = Image.open(Path("data/pages/page_1.png")).convert("RGB")
+    reference_img = Image.open(Path("scratch/synthetic_median_reference.png")).convert("RGB")
     alignment_config = AlignmentConfig(
         algorithm="orb",
         transform_model="affine",
         inlier_threshold=0.05
     )
     routing_config = RoutingConfig(low_threshold=0.2, high_threshold=0.6)
+
 
     report = EvaluationReport()
 
@@ -250,12 +251,12 @@ def run_evaluation(dataset_path: Path, output_path: Path) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Evaluate End-to-End Baseline Pipeline")
+    parser = argparse.ArgumentParser(description="Evaluate Hybrid Pipeline")
     parser.add_argument("--dataset", type=Path, required=True, help="Path to labels.csv")
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("data/evaluation/baseline_report.json"),
+        default=Path("data/evaluation/hybrid_report.json"),
         help="Output JSON report",
     )
 

@@ -78,6 +78,9 @@ def align_page(
     src_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
     dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
 
+    # Set RNG seed for deterministic RANSAC results
+    cv2.setRNGSeed(42)
+    
     warp_matrix = None
     inliers = None
     if config.transform_model == "affine":

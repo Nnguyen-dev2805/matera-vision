@@ -8,6 +8,8 @@ from matera.core.profile import FormProfile
 from matera.vision.contracts import MarkScore, RoutingConfig
 
 
+
+
 def route_page(
     mark_scores: list[MarkScore],
     profile: FormProfile,
@@ -15,7 +17,7 @@ def route_page(
     config: RoutingConfig | None = None,
 ) -> NormalizedPageResult:
     """
-    Evaluates mark scores against deterministic thresholds and form constraints
+    Evaluates mark scores against deterministic thresholds, ML classifier, and form constraints
     to produce a NormalizedPageResult.
     """
     config = config or RoutingConfig()
@@ -69,12 +71,13 @@ def route_page(
         final_selections = {}
 
         for ms in q_scores:
-            if ms.score < config.low_threshold:
-                original_selections[ms.option_id] = False
-            elif ms.score >= config.high_threshold:
+            if ms.score == 1.0:
                 original_selections[ms.option_id] = True
+            elif ms.score == 0.0:
+                original_selections[ms.option_id] = False
             else:
-                original_selections[ms.option_id] = None
+                original_selections[ms.option_id] = None # Needs Review
+                        
             final_selections[ms.option_id] = original_selections[ms.option_id]
 
         num_selected = sum(1 for v in original_selections.values() if v is True)
