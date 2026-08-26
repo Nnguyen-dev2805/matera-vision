@@ -1378,6 +1378,141 @@ def _capture_global_ink_pipeline(
     return metrics, artifacts
 
 
+
+def _capture_local_ink_pipeline(
+    aligned_image: Image.Image,
+    reference_image: Image.Image,
+    roi: RoiDef,
+    roi_trace: RoiPixelTrace,
+    out_dir: Path,
+) -> tuple[dict[str, Any], dict[str, str]]:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    metrics: dict[str, Any] = {}
+    artifacts: dict[str, str] = {}
+    
+    # Setup metrics constants
+    metrics['local_pad_px'] = LOCAL_PAD
+    metrics['outer_radius_px'] = OUTER_RADIUS
+    metrics['threshold_value'] = DIFF_THRESHOLD
+    metrics['marked_threshold_deg'] = MARKED_THRESHOLD_DEG
+    metrics['blank_threshold_deg'] = BLANK_THRESHOLD_DEG
+
+    bbox_tuple = (
+        roi.bbox.x,
+        roi.bbox.y,
+        roi.bbox.x + roi.bbox.w,
+        roi.bbox.y + roi.bbox.h,
+    )
+    # Step 0: Aligned ROI
+    aligned_roi = aligned_image.crop(bbox_tuple)
+    aligned_cv2 = cv2.cvtColor(np.array(aligned_roi), cv2.COLOR_RGB2BGR)
+    cv2.imwrite(str(out_dir / 'local_step0_aligned.png'), aligned_cv2)
+    artifacts['step0'] = 'local_step0_aligned.png'
+
+    # Step 1: Reference ROI
+    reference_roi = reference_image.crop(bbox_tuple)
+    ref_cv2 = cv2.cvtColor(np.array(reference_roi), cv2.COLOR_RGB2BGR)
+    cv2.imwrite(str(out_dir / 'local_step1_reference.png'), ref_cv2)
+    artifacts['step1'] = 'local_step1_reference.png'
+
+    median_ref_bgr = cv2.cvtColor(np.array(reference_image), cv2.COLOR_RGB2BGR)
+    
+    # We call get_local_roi_crops again just to get target_bgr and ref_gray padded
+    target_bgr, diff_mask, crop_coords, ref_gray = get_local_roi_crops(
+        aligned_image, median_ref_bgr, roi.bbox, LOCAL_PAD
+    )
+    
+    target_gray = cv2.cvtColor(target_bgr, cv2.COLOR_BGR2GRAY)
+    
+    # Step 2: AbsDiff
+    diff = cv2.absdiff(ref_gray, target_gray)
+    metrics['absdiff_nonzero_px'] = int(np.sum(diff > 0))
+    cv2.imwrite(str(out_dir / 'local_step2_absdiff.png'), diff)
+    artifacts['step2'] = 'local_step2_absdiff.png'
+
+    # Step 3: Diff Mask
+    metrics['diff_mask_ink_px'] = roi_trace.diff_ink_pixels
+    cv2.imwrite(str(out_dir / 'local_step3_diff_mask.png'), diff_mask)
+    artifacts['step3'] = 'local_step3_diff_mask.png'
+
+    h, w = diff_mask.shape
+    center_x, center_y = w / 2.0, h / 2.0
+    bx, by, bw, bh = roi_trace.text_bbox['x'], roi_trace.text_bbox['y'], roi_trace.text_bbox['w'], roi_trace.text_bbox['h']
+
+    y_grid, x_grid = np.ogrid[:h, :w]
+    dist_sq = (x_grid - center_x) ** 2 + (y_grid - center_y) ** 2
+    outer_mask = dist_sq > OUTER_RADIUS**2
+
+    core_mask = np.zeros((h, w), dtype=bool)
+    by_end = min(h, by + bh)
+    bx_end = min(w, bx + bw)
+    core_mask[by:by_end, bx:bx_end] = True
+
+    # Step 4: Core Mask
+    core_mask_img = np.zeros((h, w, 3), dtype=np.uint8)
+    core_mask_img[core_mask] = (0, 0, 255) # Red for core
+    cv2.imwrite(str(out_dir / 'local_step4_core_mask.png'), core_mask_img)
+    artifacts['step4'] = 'local_step4_core_mask.png'
+    metrics['core_mask_px'] = roi_trace.core_mask_pixels
+
+    # Step 5: Outer Mask
+    outer_mask_img = np.zeros((h, w, 3), dtype=np.uint8)
+    outer_mask_img[outer_mask] = (255, 0, 0) # Blue for outer
+    cv2.imwrite(str(out_dir / 'local_step5_outer_mask.png'), outer_mask_img)
+    artifacts['step5'] = 'local_step5_outer_mask.png'
+    metrics['outer_mask_px'] = roi_trace.outer_mask_pixels
+
+    radial_mask = diff_mask.copy()
+    radial_mask[core_mask] = 0
+    radial_mask[outer_mask] = 0
+
+    # Step 6: Radial Mask
+    metrics['radial_mask_before_morph_px'] = roi_trace.radial_mask_before_morph_px
+    cv2.imwrite(str(out_dir / 'local_step6_radial_mask.png'), radial_mask)
+    artifacts['step6'] = 'local_step6_radial_mask.png'
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (LOCAL_CLOSE_KERNEL, LOCAL_CLOSE_KERNEL))
+    radial_dilated = cv2.dilate(radial_mask, kernel, iterations=LOCAL_CLOSE_ITERS)
+    radial_closed = cv2.morphologyEx(radial_dilated, cv2.MORPH_CLOSE, kernel, iterations=LOCAL_CLOSE_ITERS)
+
+    # Step 7: Radial Closed
+    metrics['radial_mask_after_morph_px'] = roi_trace.radial_ink_pixels
+    cv2.imwrite(str(out_dir / 'local_step7_radial_closed.png'), radial_closed)
+    artifacts['step7'] = 'local_step7_radial_closed.png'
+
+    # Step 8: Radial Histogram
+    hist_img = np.zeros((h, w, 3), dtype=np.uint8)
+    if roi_trace.radial_ink_pixels > 0 and NUM_BINS == len(roi_trace.radial_histogram):
+        max_val = max(roi_trace.radial_histogram) if max(roi_trace.radial_histogram) > 0 else 1
+        for i in range(NUM_BINS):
+            val = roi_trace.radial_histogram[i]
+            if val == 0: continue
+            
+            start_angle = i * DEGREES_PER_BIN
+            end_angle = (i + 1) * DEGREES_PER_BIN
+            
+            radius = int((val / max_val) * (min(w, h) / 2))
+            
+            cv2.ellipse(hist_img, (int(center_x), int(center_y)), (radius, radius), 0, start_angle, end_angle, (0, 255, 255), -1)
+            
+    cv2.imwrite(str(out_dir / 'local_step8_radial_hist.png'), hist_img)
+    artifacts['step8'] = 'local_step8_radial_hist.png'
+
+    # Step 9: Composite Overlay
+    composite = target_bgr.copy()
+    # Add core red overlay
+    composite[core_mask] = composite[core_mask] * 0.5 + np.array([0, 0, 255]) * 0.5
+    # Add outer blue overlay
+    composite[outer_mask] = composite[outer_mask] * 0.5 + np.array([255, 0, 0]) * 0.5
+    # Highlight ink in yellow
+    composite[radial_closed > 0] = [0, 255, 255]
+    
+    cv2.imwrite(str(out_dir / 'local_step9_composite.png'), composite)
+    artifacts['step9'] = 'local_step9_composite.png'
+
+    return metrics, artifacts
+
+
 def generate_question_artifacts(
     aligned_image_rgb: Image.Image,
     median_ref_bgr: np.ndarray,
