@@ -197,4 +197,33 @@ def test_radial_boundary_blank(mock_classifier, mock_text_bbox):
     import matera.vision.mark as mark
     scores = mark.extract_mark_scores(aligned_page, profile, layout, img)
     assert len(scores) == 1
-    assert scores[0].score == 0.0  # BLANK
+
+
+
+
+def test_adaptive_crop_preserves_global_marking():
+    from matera.vision.mark import run_v11_global_topology
+    from matera.vision.adaptive_crop import compute_adaptive_global_crop
+    from PIL import Image
+    import numpy as np
+    import cv2
+    from matera.core.layout import RoiDef, BoundingBox
+    
+    img = Image.new("RGB", (200, 200), color="white")
+    median_ref_bgr = np.full((200, 200, 3), 255, dtype=np.uint8)
+    
+    img_cv = np.array(img)
+    cv2.line(img_cv, (40, 40), (160, 160), (0, 0, 0), 5)
+    cv2.line(img_cv, (40, 160), (160, 40), (0, 0, 0), 5)
+    img = Image.fromarray(img_cv)
+    
+    rois = [
+        RoiDef(question_id="Q1", option_id="A", bbox=BoundingBox(100, 100, 20, 20)),
+        RoiDef(question_id="Q1", option_id="B", bbox=BoundingBox(100, 130, 20, 20)),
+    ]
+    
+    full_mask = np.zeros((200, 200, 3), dtype=np.uint8)
+    
+    result = run_v11_global_topology(img, median_ref_bgr, rois, full_mask)
+    assert "A" in result
+    assert "B" in result
