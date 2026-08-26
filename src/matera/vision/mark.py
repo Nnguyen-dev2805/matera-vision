@@ -33,6 +33,14 @@ EXTREMES_REJECT_THRESHOLD = 50.0
 CHECKBOX_INNER_MARGIN = 5
 HSV_SATURATION_THRESHOLD = 40
 
+DIFF_THRESHOLD = 30
+GAUSS_KERNEL = (3, 3)
+CLOSE_KERNEL_SIZE = 5
+CLOSE_ITERATIONS = 2
+LOCAL_CLOSE_KERNEL = 3
+LOCAL_CLOSE_ITERS = 1
+
+
 class UnionFind:
     def __init__(self, n: int):
         self.parent = list(range(n))
@@ -101,8 +109,8 @@ def get_local_roi_crops(aligned_image_rgb: Image.Image, median_ref_bgr: np.ndarr
     ref_gray = cv2.cvtColor(ref_crop, cv2.COLOR_BGR2GRAY)
     
     diff = cv2.absdiff(ref_gray, target_gray)
-    blurred = cv2.GaussianBlur(diff, (3, 3), 0)
-    _, mask_raw = cv2.threshold(blurred, 30, 255, cv2.THRESH_BINARY)
+    blurred = cv2.GaussianBlur(diff, GAUSS_KERNEL, 0)
+    _, mask_raw = cv2.threshold(blurred, DIFF_THRESHOLD, 255, cv2.THRESH_BINARY)
     
     return target_bgr, mask_raw, (crop_x1, crop_y1, crop_x2, crop_y2), ref_gray
 
@@ -129,15 +137,15 @@ def run_v11_global_topology(aligned_image_rgb: Image.Image, median_ref_bgr: np.n
     ref_gray = cv2.cvtColor(ref_crop, cv2.COLOR_BGR2GRAY)
     
     diff = cv2.absdiff(ref_gray, target_gray)
-    blurred = cv2.GaussianBlur(diff, (3, 3), 0)
-    _, mask_raw = cv2.threshold(blurred, 30, 255, cv2.THRESH_BINARY)
+    blurred = cv2.GaussianBlur(diff, GAUSS_KERNEL, 0)
+    _, mask_raw = cv2.threshold(blurred, DIFF_THRESHOLD, 255, cv2.THRESH_BINARY)
     
     h, w = mask_raw.shape
     mask_raw[:15, :] = 0
     mask_raw[h-15:, :] = 0
     
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-    mask_closed = cv2.morphologyEx(mask_raw, cv2.MORPH_CLOSE, kernel, iterations=2)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (CLOSE_KERNEL_SIZE, CLOSE_KERNEL_SIZE))
+    mask_closed = cv2.morphologyEx(mask_raw, cv2.MORPH_CLOSE, kernel, iterations=CLOSE_ITERATIONS)
     contours, _ = cv2.findContours(mask_closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
     global_marked = set()
@@ -213,7 +221,7 @@ def get_local_roi_crops_hsv(aligned_image_rgb: Image.Image, median_ref_bgr: np.n
     ref_gray = cv2.cvtColor(ref_crop, cv2.COLOR_BGR2GRAY)
     
     diff = cv2.absdiff(ref_gray, target_gray)
-    blurred = cv2.GaussianBlur(diff, (3, 3), 0)
+    blurred = cv2.GaussianBlur(diff, GAUSS_KERNEL, 0)
     _, mask_diff = cv2.threshold(blurred, 30, 255, cv2.THRESH_BINARY)
     
     hsv = cv2.cvtColor(target_bgr, cv2.COLOR_BGR2HSV)
