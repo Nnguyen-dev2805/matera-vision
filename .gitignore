@@ -31,14 +31,7 @@ share/python-wheels/
 MANIFEST
 
 # Matera specific outputs
-data/pages/
-data/aligned_pages/
-data/golden/images/
-data/debug/
-data/output/
-data/dataset/
-data/test/
-data/evaluation/*_report.json
+data/
 debug/
 .tmp/
 .tmp_uploads/
