@@ -36,6 +36,13 @@ from matera.vision.mark import (
     GLOBAL_PAD,
     MERGE_THRESHOLD,
     EXTREMES_REJECT_THRESHOLD,
+    GAUSS_KERNEL,
+    CLOSE_KERNEL_SIZE,
+    CLOSE_ITERATIONS,
+    LOCAL_CLOSE_KERNEL,
+    LOCAL_CLOSE_ITERS,
+    DIFF_THRESHOLD,
+
     UnionFind,
     min_contour_distance,
     get_horizontal_extremes,
@@ -1257,6 +1264,118 @@ def trace_global_topology(
         global_marked=global_marked,
         artifacts={}
     )
+
+
+
+def _capture_global_ink_pipeline(
+    aligned_image_rgb: Image.Image,
+    median_ref_bgr: np.ndarray,
+    global_trace: GlobalTopologyTrace,
+    out_dir: Path,
+) -> tuple[dict[str, Any], dict[str, str]]:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    metrics: dict[str, Any] = {}
+    artifacts: dict[str, str] = {}
+
+    if not global_trace.group_crop:
+        return metrics, artifacts
+
+    crop = global_trace.group_crop
+    crop_x1, crop_y1 = crop['x1'], crop['y1']
+    crop_x2, crop_y2 = crop['x2'], crop['y2']
+
+    # Step 0: Raw Crop
+    crop_img = aligned_image_rgb.crop((crop_x1, crop_y1, crop_x2, crop_y2))
+    target_bgr = cv2.cvtColor(np.array(crop_img), cv2.COLOR_RGB2BGR)
+    cv2.imwrite(str(out_dir / 'global_step0_raw_crop.png'), target_bgr)
+    artifacts['step0'] = 'global_step0_raw_crop.png'
+
+    # Step 1: Reference Crop
+    ref_crop = median_ref_bgr[crop_y1:crop_y2, crop_x1:crop_x2]
+    cv2.imwrite(str(out_dir / 'global_step1_ref_crop.png'), ref_crop)
+    artifacts['step1'] = 'global_step1_ref_crop.png'
+
+    target_gray = cv2.cvtColor(target_bgr, cv2.COLOR_BGR2GRAY)
+    ref_gray = cv2.cvtColor(ref_crop, cv2.COLOR_BGR2GRAY)
+
+    # Step 2: AbsDiff
+    diff = cv2.absdiff(ref_gray, target_gray)
+    metrics['absdiff_nonzero_px'] = int(np.sum(diff > 0))
+    cv2.imwrite(str(out_dir / 'global_step2_absdiff.png'), diff)
+    artifacts['step2'] = 'global_step2_absdiff.png'
+
+    # Step 3: Blurred Diff
+    blurred = cv2.GaussianBlur(diff, GAUSS_KERNEL, 0)
+    cv2.imwrite(str(out_dir / 'global_step3_blurred.png'), blurred)
+    artifacts['step3'] = 'global_step3_blurred.png'
+
+    # Step 4: Threshold Mask
+    _, mask_raw = cv2.threshold(blurred, DIFF_THRESHOLD, 255, cv2.THRESH_BINARY)
+    h, w = mask_raw.shape
+    mask_raw[:15, :] = 0
+    mask_raw[h-15:, :] = 0
+    metrics['threshold_value'] = DIFF_THRESHOLD
+    metrics['threshold_ink_px'] = int(np.sum(mask_raw > 0))
+    cv2.imwrite(str(out_dir / 'global_step4_threshold.png'), mask_raw)
+    artifacts['step4'] = 'global_step4_threshold.png'
+
+    # Step 5: Closed Mask
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (CLOSE_KERNEL_SIZE, CLOSE_KERNEL_SIZE))
+    mask_closed = cv2.morphologyEx(mask_raw, cv2.MORPH_CLOSE, kernel, iterations=CLOSE_ITERATIONS)
+    metrics['closed_ink_px'] = int(np.sum(mask_closed > 0))
+    cv2.imwrite(str(out_dir / 'global_step5_closed.png'), mask_closed)
+    artifacts['step5'] = 'global_step5_closed.png'
+
+    # Prepare for Step 6 and 7 by drawing on original crop
+    contours_img = target_bgr.copy()
+    clusters_img = target_bgr.copy()
+
+    contours, _ = cv2.findContours(mask_closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    metrics['contour_count_raw'] = len(contours)
+    
+    valid_count = 0
+    rejected_count = 0
+    for contour_trace in global_trace.contours:
+        if contour_trace.status == 'valid':
+            valid_count += 1
+            color = (0, 255, 0)  # Green
+        else:
+            rejected_count += 1
+            color = (0, 0, 255)  # Red
+        
+        x, y, cw, ch = contour_trace.bbox
+        cv2.rectangle(contours_img, (x, y), (x+cw, y+ch), color, 1)
+
+    metrics['contour_count_valid'] = valid_count
+    metrics['contour_count_rejected'] = rejected_count
+
+    # Step 6: Contours Overlay
+    cv2.imwrite(str(out_dir / 'global_step6_contours.png'), contours_img)
+    artifacts['step6'] = 'global_step6_contours.png'
+
+    # Step 7: Cluster + Hull Overlay
+    qualifying_count = 0
+    for cluster_trace in global_trace.clusters:
+        if cluster_trace.qualifies_global:
+            qualifying_count += 1
+        
+        # Bbox in blue
+        cx, cy, cw, ch = cluster_trace.bbox
+        cv2.rectangle(clusters_img, (cx, cy), (cx+cw, cy+ch), (255, 0, 0), 2)
+        
+        # We don't have the exact hull points in trace, so we recompute just the hull points for visualization
+        # based on valid contours if needed, but wait, we can just highlight the bbox for now, 
+        # or we could recompute hull. For simplicity, just drawing the cluster bbox is enough.
+        
+    metrics['cluster_count'] = len(global_trace.clusters)
+    metrics['cluster_qualifying'] = qualifying_count
+    metrics['merge_threshold_px'] = MERGE_THRESHOLD
+    metrics['extremes_reject_threshold_px'] = EXTREMES_REJECT_THRESHOLD
+
+    cv2.imwrite(str(out_dir / 'global_step7_clusters.png'), clusters_img)
+    artifacts['step7'] = 'global_step7_clusters.png'
+
+    return metrics, artifacts
 
 
 def generate_question_artifacts(
