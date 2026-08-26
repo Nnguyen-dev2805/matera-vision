@@ -73,6 +73,8 @@ class GlobalTopologyTrace:
     clusters: list[ClusterTrace]
     global_marked: list[str]
     artifacts: dict[str, str]
+    ink_pipeline_metrics: dict[str, Any] = dataclasses.field(default_factory=dict)
+    ink_pipeline_artifacts: dict[str, str] = dataclasses.field(default_factory=dict)
 
 @dataclasses.dataclass
 class RoiStageTrace:
@@ -132,6 +134,9 @@ class RoiPixelTrace:
     decision_path: list[str] = dataclasses.field(default_factory=list)
     suspicion_notes: list[str] = dataclasses.field(default_factory=list)
     stages: list[RoiStageTrace] = dataclasses.field(default_factory=list)
+    radial_mask_before_morph_px: int | None = None
+    local_ink_pipeline_metrics: dict[str, Any] = dataclasses.field(default_factory=dict)
+    local_ink_pipeline_artifacts: dict[str, str] = dataclasses.field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return _json_ready(dataclasses.asdict(self))
@@ -432,6 +437,7 @@ def analyze_roi_pixels(
         classifier_available=classifier_available,
         decision_path=decision_path,
         suspicion_notes=suspicion_notes,
+        radial_mask_before_morph_px=int(np.sum(radial_mask > 0)),
     )
     masks = {
         "aligned_roi": aligned_roi,
@@ -800,7 +806,7 @@ def _write_index_html(out_dir: Path, report: PixelProbeReport) -> None:
   </div>
 
   <script>
-    const REPORT_DATA = {json.dumps(report.as_dict())};
+    const REPORT_DATA = {json.dumps(_json_ready(dataclasses.asdict(report)))};
     
     function init() {{
       const qList = document.getElementById("q-list");
