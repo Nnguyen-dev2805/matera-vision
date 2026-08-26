@@ -1108,3 +1108,50 @@ def trace_global_topology(
         global_marked=global_marked,
         artifacts={}
     )
+
+
+def generate_question_artifacts(
+    aligned_image_rgb: Image.Image,
+    median_ref_bgr: np.ndarray,
+    global_trace: GlobalTopologyTrace,
+    roi_traces: list[RoiPixelTrace],
+    output_dir: Path
+) -> dict[str, str]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    artifacts = {}
+    
+    if global_trace.ran and global_trace.group_crop:
+        c = global_trace.group_crop
+        crop_img = aligned_image_rgb.crop((c['x1'], c['y1'], c['x2'], c['y2']))
+        draw_img = np.array(crop_img)
+        draw_img = cv2.cvtColor(draw_img, cv2.COLOR_RGB2BGR)
+        
+        for contour_trace in global_trace.contours:
+            x, y, w, h = contour_trace.bbox
+            color = (0, 255, 0) if contour_trace.status == "valid" else (0, 0, 255)
+            cv2.rectangle(draw_img, (x, y), (x+w, y+h), color, 1)
+            
+        for cluster in global_trace.clusters:
+            hx, hy, hw, hh = cluster.bbox
+            cv2.rectangle(draw_img, (hx, hy), (hx+hw, hy+hh), (255, 0, 0), 2)
+            
+        global_filename = f"{global_trace.question_id}_global.png"
+        cv2.imwrite(str(output_dir / global_filename), draw_img)
+        artifacts["global"] = global_filename
+        
+    for roi in roi_traces:
+        if roi.crop_coords:
+            c = roi.crop_coords
+            roi_crop = aligned_image_rgb.crop((c['x1'], c['y1'], c['x2'], c['y2']))
+            draw_img = np.array(roi_crop)
+            draw_img = cv2.cvtColor(draw_img, cv2.COLOR_RGB2BGR)
+            
+            if roi.text_bbox:
+                x, y, w, h = roi.text_bbox["x"], roi.text_bbox["y"], roi.text_bbox["w"], roi.text_bbox["h"]
+                cv2.rectangle(draw_img, (x, y), (x+w, y+h), (255, 0, 255), 1)
+                
+            opt_filename = f"{global_trace.question_id}_{roi.option_id}.png"
+            cv2.imwrite(str(output_dir / opt_filename), draw_img)
+            artifacts[f"option_{roi.option_id}"] = opt_filename
+            
+    return artifacts
