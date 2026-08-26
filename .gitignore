@@ -55,3 +55,6 @@ htmlcov/
 .agents/
 scratch/
 
+# CodeGraph
+.codegraph/
+
