@@ -140,6 +140,9 @@ def _process_single_file_worker(
                 aligned_page, semantic_profile, page_layout, reference_img
             )
             result = route_page(mark_scores, semantic_profile, page.page_number, routing_config)
+            
+            import dataclasses
+            result = dataclasses.replace(result, file_name=rel_name)
             file_results.append(result)
             
             selected_answers = [
@@ -330,6 +333,9 @@ def run_pipeline_on_files(
 
     if not all_page_results:
         raise RuntimeError("No PDF pages were processed successfully.")
+
+    # Ensure stable ordering of results by file_name and page_number
+    all_page_results.sort(key=lambda r: (getattr(r, "file_name", "") or "", r.page_number))
 
     output_excel_path.parent.mkdir(parents=True, exist_ok=True)
     export_to_excel(all_page_results, semantic_profile, output_excel_path)

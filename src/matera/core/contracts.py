@@ -129,6 +129,7 @@ class NormalizedPageResult:
     page_number: int
     answers: tuple[NormalizedAnswer, ...]
     review_tasks: tuple[ReviewTask, ...] = ()
+    file_name: str | None = None
 
     def __post_init__(self) -> None:
         if type(self.form_id) is not str:

@@ -228,6 +228,11 @@ async function handleStartExtract() {
         body: formData,
       });
 
+      if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(`Server returned ${res.status}: ${JSON.stringify(errData)}`);
+      }
+
       const uploadData = await res.json();
       sseUrl = `${API_BASE}/api/process-stream?session_id=${encodeURIComponent(uploadData.session_id)}&debug=${isDebug}`;
     } catch (err) {

@@ -280,8 +280,23 @@ def extract_mark_scores(
         debug_path = pathlib.Path(debug_dir)
         debug_path.mkdir(parents=True, exist_ok=True)
         
-    rois_by_q = defaultdict(list)
+    import dataclasses
+    scale_x = orig_bgr.shape[1] / layout.width_px
+    scale_y = orig_bgr.shape[0] / layout.height_px
+    
+    scaled_rois = []
     for roi in layout.rois:
+        new_bbox = dataclasses.replace(
+            roi.bbox,
+            x=int(roi.bbox.x * scale_x),
+            y=int(roi.bbox.y * scale_y),
+            w=int(roi.bbox.w * scale_x),
+            h=int(roi.bbox.h * scale_y)
+        )
+        scaled_rois.append(dataclasses.replace(roi, bbox=new_bbox))
+        
+    rois_by_q = defaultdict(list)
+    for roi in scaled_rois:
         rois_by_q[roi.question_id].append(roi)
         
     # 2. Run Layer 1 (Global Topology)
@@ -296,7 +311,7 @@ def extract_mark_scores(
     scores = []
     clf = _get_classifier()
     
-    for roi in layout.rois:
+    for roi in scaled_rois:
         strategy = roi.mark_strategy_override or strategy_map.get(roi.question_id)
         if not strategy:
             raise ValueError(f"Cannot resolve mark strategy for ROI question_id={roi.question_id}")

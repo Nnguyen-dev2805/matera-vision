@@ -10,7 +10,7 @@ from matera.core.profile import FormProfile
 
 def generate_headers(profile: FormProfile) -> list[str]:
     """Dynamically generate column headers based on profile definitions."""
-    columns = ["form_id", "form_version", "page_number", "page_status"]
+    columns = ["file_name", "form_id", "form_version", "page_number", "page_status"]
 
     for q in profile.questions:
         for opt in q.options:
@@ -28,6 +28,7 @@ def flatten_result(result: NormalizedPageResult, profile: FormProfile) -> dict[s
     }
 
     row: dict[str, Any] = {
+        "file_name": getattr(result, "file_name", "") or "",
         "form_id": result.form_id,
         "form_version": result.form_version,
         "page_number": result.page_number,
