@@ -89,3 +89,128 @@ def test_analyze_roi_pixels_trace_is_json_serializable_with_opencv_ints():
     )
 
     json.dumps(trace.as_dict())
+
+
+def test_new_report_models_serializability():
+    import dataclasses
+    from matera.tools.pixel_probe import PixelProbeReport, GlobalTopologyTrace, _json_ready
+
+    report = PixelProbeReport(
+        report_version=2,
+        source_pdf="test.pdf",
+        page_number=1,
+        alignment_score=1.0,
+        warp_matrix=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        filters={"question": None, "option": None, "routing_evaluated": True},
+        thresholds={},
+        questions=[],
+        global_topology={
+            "Q1": GlobalTopologyTrace(
+                question_id="Q1",
+                ran=True,
+                skip_reason=None,
+                group_crop={},
+                option_centers=[],
+                contours=[],
+                clusters=[],
+                global_marked=[],
+                artifacts={},
+            )
+        },
+        traces=[],
+        artifacts={},
+    )
+    data = _json_ready(dataclasses.asdict(report))
+    assert data["report_version"] == 2
+
+
+def test_trace_global_topology():
+    from matera.tools.pixel_probe import trace_global_topology
+    from matera.core.layout import BoundingBox, RoiDef
+
+    reference = Image.new("RGB", (140, 140), "white")
+    marked = np.full((140, 140, 3), 255, dtype=np.uint8)
+    # Draw a contour that should trigger global marking
+    cv2.circle(marked, (70, 70), 30, (0, 0, 0), 2)
+    aligned = Image.fromarray(marked)
+    
+    # Needs at least 2 rois
+    rois = [
+        RoiDef("Q1", "a", BoundingBox(50, 50, 10, 10)),
+        RoiDef("Q1", "b", BoundingBox(80, 50, 10, 10))
+    ]
+    
+    trace = trace_global_topology(
+        aligned_image_rgb=aligned,
+        median_ref_bgr=np.array(reference),
+        rois=rois,
+        question_id="Q1"
+    )
+    
+    assert trace.question_id == "Q1"
+    assert trace.ran is True
+    assert isinstance(trace.global_marked, list)
+
+
+def test_generate_question_artifacts(tmp_path):
+    from matera.tools.pixel_probe import generate_question_artifacts, GlobalTopologyTrace, RoiPixelTrace
+    from PIL import Image
+    import numpy as np
+    
+    reference = Image.new("RGB", (140, 140), "white")
+    marked = np.full((140, 140, 3), 255, dtype=np.uint8)
+    aligned = Image.fromarray(marked)
+    
+    global_trace = GlobalTopologyTrace(
+        question_id="Q1",
+        ran=True,
+        skip_reason=None,
+        group_crop={"x1": 0, "y1": 0, "x2": 140, "y2": 140},
+        option_centers=[],
+        contours=[],
+        clusters=[],
+        global_marked=[],
+        artifacts={}
+    )
+    
+    roi_traces = [
+        RoiPixelTrace(
+            page_number=1,
+            question_id="Q1",
+            option_id="a",
+            strategy="circle",
+            bbox={"x": 50, "y": 50, "w": 40, "h": 40},
+            crop_coords={"x1": 40, "y1": 40, "x2": 100, "y2": 100},
+            prediction="UNMARKED",
+            method="LOCAL_RADIAL",
+            score=0.1,
+            is_global_marked=False,
+            diff_ink_pixels=0,
+            diff_contour_count=0,
+            diff_contour_areas=[],
+            text_bbox={"x": 45, "y": 45, "w": 50, "h": 50},
+            core_mask_pixels=100,
+            outer_mask_pixels=200,
+            radial_ink_pixels=0,
+            radial_active_bin_count=0,
+            radial_degrees_covered=0.0,
+            radial_histogram=[0]*72,
+            hsv_ink_pixels=0,
+            classifier_probability=None,
+            classifier_available=False
+        )
+    ]
+    
+    artifacts = generate_question_artifacts(
+        aligned_image_rgb=aligned,
+        median_ref_bgr=np.array(reference),
+        global_trace=global_trace,
+        roi_traces=roi_traces,
+        output_dir=tmp_path
+    )
+    
+    assert "global" in artifacts
+    assert "option_a" in artifacts
+    
+    assert (tmp_path / artifacts["global"]).exists()
+    assert (tmp_path / artifacts["option_a"]).exists()
