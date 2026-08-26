@@ -794,7 +794,16 @@ def _write_index_html(out_dir: Path, report: PixelProbeReport) -> None:
     
     .metrics-list {{ list-style: none; padding: 0; margin: 0; font-size: 13px; }}
     .metrics-list li {{ display: flex; justify-content: space-between; margin-bottom: 4px; border-bottom: 1px dashed #444; }}
-  </style>
+  
+        .step-stepper { display: flex; flex-direction: column; align-items: center; gap: 1rem; margin: 1rem 0; }
+        .stepper-controls { display: flex; gap: 1rem; align-items: center; justify-content: center; width: 100%; }
+        .stepper-controls button { padding: 0.5rem 1rem; cursor: pointer; }
+        .stepper-stage-name { font-weight: bold; min-width: 200px; text-align: center; }
+        .stepper-image-container { position: relative; width: 100%; max-width: 600px; aspect-ratio: 1; border: 1px solid #ccc; overflow: hidden; background: #000; }
+        .stepper-image-container img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity 0.3s ease-in-out; }
+        .stepper-image-container img.active { opacity: 1; }
+        .stepper-image-container img.compare-mode { mix-blend-mode: difference; z-index: 10; opacity: 0.8 !important; }
+    </style>
 </head>
 <body>
   <div id="sidebar">
@@ -906,7 +915,54 @@ def _write_index_html(out_dir: Path, report: PixelProbeReport) -> None:
     }}
     
     document.addEventListener("DOMContentLoaded", init);
-  </script>
+  
+        function initSteppers() {
+            document.querySelectorAll('.step-stepper').forEach(stepper => {
+                const images = stepper.querySelectorAll('.stepper-image-container img');
+                const prevBtn = stepper.querySelector('.prev-btn');
+                const nextBtn = stepper.querySelector('.next-btn');
+                const compareBtn = stepper.querySelector('.compare-btn');
+                const stageName = stepper.querySelector('.stepper-stage-name');
+                let currentIndex = 0;
+                let isCompare = false;
+
+                function update() {
+                    images.forEach((img, idx) => {
+                        img.classList.remove('active');
+                        img.classList.remove('compare-mode');
+                        if (idx === currentIndex) {
+                            img.classList.add('active');
+                            stageName.textContent = img.dataset.stageName;
+                        } else if (isCompare && idx === currentIndex - 1) {
+                            img.classList.add('active');
+                            img.classList.add('compare-mode');
+                        }
+                    });
+                    prevBtn.disabled = currentIndex === 0;
+                    nextBtn.disabled = currentIndex === images.length - 1;
+                    compareBtn.disabled = currentIndex === 0;
+                    if (isCompare) compareBtn.style.background = '#ddd';
+                    else compareBtn.style.background = '';
+                }
+
+                prevBtn.addEventListener('click', () => {
+                    if (currentIndex > 0) currentIndex--;
+                    update();
+                });
+                nextBtn.addEventListener('click', () => {
+                    if (currentIndex < images.length - 1) currentIndex++;
+                    update();
+                });
+                compareBtn.addEventListener('click', () => {
+                    isCompare = !isCompare;
+                    update();
+                });
+                
+                update();
+            });
+        }
+        window.addEventListener('DOMContentLoaded', initSteppers);
+    </script>
 </body>
 </html>
 """
