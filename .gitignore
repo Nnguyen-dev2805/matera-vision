@@ -53,3 +53,5 @@ htmlcov/
 
 # Antigravity/Agents
 .agents/
+scratch/
+
