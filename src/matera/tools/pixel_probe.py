@@ -33,6 +33,12 @@ from matera.vision.mark import (
     get_local_roi_crops_hsv,
     get_text_bounding_box,
     run_v11_global_topology,
+    GLOBAL_PAD,
+    MERGE_THRESHOLD,
+    EXTREMES_REJECT_THRESHOLD,
+    UnionFind,
+    min_contour_distance,
+    get_horizontal_extremes,
 )
 
 
@@ -933,3 +939,172 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Pixel probe written to {out_dir}")
     print(f"Open {out_dir / 'index.html'} to inspect ROI traces.")
     return 0
+
+
+def trace_global_topology(
+    aligned_image_rgb: Image.Image,
+    median_ref_bgr: np.ndarray,
+    rois: list[RoiDef],
+    question_id: str
+) -> GlobalTopologyTrace:
+    if len(rois) <= 1:
+        return GlobalTopologyTrace(
+            question_id=question_id,
+            ran=False,
+            skip_reason="Insufficient ROIs (<= 1)",
+            group_crop={},
+            option_centers=[],
+            contours=[],
+            clusters=[],
+            global_marked=[],
+            artifacts={}
+        )
+        
+    min_x = min(r.bbox.x for r in rois)
+    min_y = min(r.bbox.y for r in rois)
+    max_x = max(r.bbox.x + r.bbox.w for r in rois)
+    max_y = max(r.bbox.y + r.bbox.h for r in rois)
+    
+    crop_x1 = max(0, min_x - GLOBAL_PAD)
+    crop_y1 = max(0, min_y - GLOBAL_PAD)
+    crop_x2 = min(aligned_image_rgb.width, max_x + GLOBAL_PAD)
+    crop_y2 = min(aligned_image_rgb.height, max_y + GLOBAL_PAD)
+    group_crop = {"x1": crop_x1, "y1": crop_y1, "x2": crop_x2, "y2": crop_y2}
+    
+    crop_img = aligned_image_rgb.crop((crop_x1, crop_y1, crop_x2, crop_y2))
+    target_bgr = cv2.cvtColor(np.array(crop_img), cv2.COLOR_RGB2BGR)
+    ref_crop = median_ref_bgr[crop_y1:crop_y2, crop_x1:crop_x2]
+    
+    target_gray = cv2.cvtColor(target_bgr, cv2.COLOR_BGR2GRAY)
+    ref_gray = cv2.cvtColor(ref_crop, cv2.COLOR_BGR2GRAY)
+    
+    diff = cv2.absdiff(ref_gray, target_gray)
+    blurred = cv2.GaussianBlur(diff, (3, 3), 0)
+    _, mask_raw = cv2.threshold(blurred, 30, 255, cv2.THRESH_BINARY)
+    
+    h, w = mask_raw.shape
+    mask_raw[:15, :] = 0
+    mask_raw[h-15:, :] = 0
+    
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    mask_closed = cv2.morphologyEx(mask_raw, cv2.MORPH_CLOSE, kernel, iterations=2)
+    contours, _ = cv2.findContours(mask_closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    option_centers = []
+    for r in rois:
+        cx = (r.bbox.x + r.bbox.w / 2.0) - crop_x1
+        cy = (r.bbox.y + r.bbox.h / 2.0) - crop_y1
+        option_centers.append({"option_id": r.option_id, "x": cx, "y": cy})
+        
+    valid_cnts = []
+    contour_traces = []
+    for idx, cnt in enumerate(contours):
+        area = cv2.contourArea(cnt)
+        x, y, cw, ch = cv2.boundingRect(cnt)
+        bbox = [x, y, cw, ch]
+        
+        status = "valid"
+        reject_reason = None
+        if area <= 30:
+            status = "rejected"
+            reject_reason = "Area <= 30"
+        elif (ch > 100 and cw < 25) or (cw > 100 and ch < 25):
+            status = "rejected"
+            reject_reason = "Extreme aspect ratio"
+            
+        contour_traces.append(ContourTrace(
+            contour_id=idx,
+            area=float(area),
+            bbox=bbox,
+            status=status,
+            reject_reason=reject_reason
+        ))
+        
+        if status == "valid":
+            valid_cnts.append((idx, cnt))
+            
+    n = len(valid_cnts)
+    if n == 0:
+        return GlobalTopologyTrace(
+            question_id=question_id,
+            ran=True,
+            skip_reason=None,
+            group_crop=group_crop,
+            option_centers=option_centers,
+            contours=contour_traces,
+            clusters=[],
+            global_marked=[],
+            artifacts={}
+        )
+        
+    uf = UnionFind(n)
+    
+    for i in range(n):
+        for j in range(i + 1, n):
+            dist = min_contour_distance(valid_cnts[i][1], valid_cnts[j][1])
+            if dist <= MERGE_THRESHOLD:
+                l1, r1 = get_horizontal_extremes(valid_cnts[i][1])
+                l2, r2 = get_horizontal_extremes(valid_cnts[j][1])
+                dist_left = np.linalg.norm(l1 - l2)
+                dist_right = np.linalg.norm(r1 - r2)
+                
+                if dist_left > EXTREMES_REJECT_THRESHOLD and dist_right > EXTREMES_REJECT_THRESHOLD:
+                    pass
+                else:
+                    uf.union(i, j)
+                    
+    clusters_dict = defaultdict(list)
+    for i in range(n):
+        clusters_dict[uf.find(i)].append(valid_cnts[i])
+        
+    cluster_traces = []
+    global_marked = []
+    
+    for root, cnt_list in clusters_dict.items():
+        combined_points = np.vstack([c[1] for c in cnt_list])
+        total_area = sum([cv2.contourArea(c[1]) for c in cnt_list])
+        
+        hull = cv2.convexHull(combined_points)
+        hull_area = cv2.contourArea(hull)
+        hx, hy, hw, hh = cv2.boundingRect(hull)
+        
+        rejection_reasons = []
+        qualifies_global = False
+        inside_options = []
+        
+        if hull_area > 1000:
+            solidity = total_area / float(hull_area) if hull_area > 0 else 1.0
+            if solidity < 0.4:
+                qualifies_global = True
+                for opt in option_centers:
+                    if cv2.pointPolygonTest(hull, (opt['x'], opt['y']), False) >= 0:
+                        global_marked.append(opt['option_id'])
+                        inside_options.append(opt['option_id'])
+            else:
+                rejection_reasons.append(f"Solidity {solidity:.2f} >= 0.4")
+        else:
+            rejection_reasons.append(f"Hull area {hull_area} <= 1000")
+            
+        cluster_traces.append(ClusterTrace(
+            cluster_id=root,
+            contour_ids=[c[0] for c in cnt_list],
+            total_area=float(total_area),
+            hull_area=float(hull_area),
+            solidity=float(total_area / hull_area) if hull_area > 0 else 1.0,
+            bbox=[hx, hy, hw, hh],
+            qualifies_global=qualifies_global,
+            inside_options=inside_options,
+            rejection_reasons=rejection_reasons
+        ))
+        
+    return GlobalTopologyTrace(
+        question_id=question_id,
+        ran=True,
+        skip_reason=None,
+        group_crop=group_crop,
+        option_centers=option_centers,
+        contours=contour_traces,
+        clusters=cluster_traces,
+        global_marked=global_marked,
+        artifacts={}
+    )

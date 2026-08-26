@@ -122,3 +122,31 @@ def test_new_report_models_serializability():
     )
     data = _json_ready(dataclasses.asdict(report))
     assert data["report_version"] == 2
+
+
+def test_trace_global_topology():
+    from matera.tools.pixel_probe import trace_global_topology
+    from matera.core.layout import BoundingBox, RoiDef
+
+    reference = Image.new("RGB", (140, 140), "white")
+    marked = np.full((140, 140, 3), 255, dtype=np.uint8)
+    # Draw a contour that should trigger global marking
+    cv2.circle(marked, (70, 70), 30, (0, 0, 0), 2)
+    aligned = Image.fromarray(marked)
+    
+    # Needs at least 2 rois
+    rois = [
+        RoiDef("Q1", "a", BoundingBox(50, 50, 10, 10)),
+        RoiDef("Q1", "b", BoundingBox(80, 50, 10, 10))
+    ]
+    
+    trace = trace_global_topology(
+        aligned_image_rgb=aligned,
+        median_ref_bgr=np.array(reference),
+        rois=rois,
+        question_id="Q1"
+    )
+    
+    assert trace.question_id == "Q1"
+    assert trace.ran is True
+    assert isinstance(trace.global_marked, list)
