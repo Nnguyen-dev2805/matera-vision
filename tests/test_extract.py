@@ -16,7 +16,7 @@ from matera.data.extract import (
 
 @pytest.fixture
 def sample_pdf(tmp_path: Path) -> Path:
-    pdf_path = Path("data/pdfs/matera-example.pdf")
+    pdf_path = Path("data/example/matera-example.pdf")
     if not pdf_path.exists():
         pytest.fail(f"Required test fixture {pdf_path.resolve()} not found")
     return pdf_path
@@ -185,7 +185,7 @@ def test_cli_happy_path(tmp_path: Path, sample_pdf: Path, monkeypatch: pytest.Mo
     import json
 
     manifest = json.loads((out_dir / "manifest.json").read_text())
-    assert manifest["source_path"] == "data/pdfs/matera-example.pdf"
+    assert manifest["source_path"] == "data/example/matera-example.pdf"
     assert manifest["source_sha256"] == source_hash_before
     assert manifest["page_count"] == 10
     assert manifest["page_count"] == len(manifest["pages"])

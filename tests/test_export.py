@@ -27,6 +27,7 @@ def sample_profile() -> FormProfile:
 def test_generate_headers(sample_profile: FormProfile):
     headers = generate_headers(sample_profile)
     assert headers == [
+        "file_name",
         "form_id",
         "form_version",
         "page_number",
@@ -59,6 +60,7 @@ def test_flatten_result_resolved(sample_profile: FormProfile):
 
     row = flatten_result(result, sample_profile)
     assert row == {
+        "file_name": "",
         "form_id": "test",
         "form_version": "v1",
         "page_number": 1,

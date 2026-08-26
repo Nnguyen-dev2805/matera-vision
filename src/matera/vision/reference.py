@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+import dataclasses
 from typing import TYPE_CHECKING
+
 import cv2
 import numpy as np
 from PIL import Image
@@ -33,10 +35,10 @@ def generate_median_reference(aligned_pages: list["AlignedPage"]) -> Image.Image
     
     # Check that all images have the same dimensions
     first_size = aligned_pages[0].image.size
-    for page in aligned_pages:
+    for i, page in enumerate(aligned_pages):
         if page.image.size != first_size:
             logger.warning(f"Image size mismatch in median generation: {page.image.size} != {first_size}. Resizing...")
-            page.image = page.image.resize(first_size, Image.Resampling.LANCZOS)
+            aligned_pages[i] = dataclasses.replace(page, image=page.image.resize(first_size, Image.Resampling.LANCZOS))
             
     # Convert all PIL images to numpy arrays
     # Stacking 10 large images requires ~250MB RAM, which is acceptable.

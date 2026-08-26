@@ -1,8 +1,10 @@
 import pickle
+from pathlib import Path
+
 import cv2
 import numpy as np
-from pathlib import Path
 from skimage.feature import hog
+
 
 def extract_hog_features(img: np.ndarray) -> np.ndarray:
     """

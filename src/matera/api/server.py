@@ -10,14 +10,13 @@ import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import AsyncGenerator, Callable, Dict, List, Optional, Any
+from typing import Any, AsyncGenerator, Callable, List, Optional
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
-from pydantic import BaseModel
 
 from matera.core.layout import load_layout_profile
 from matera.core.profile import load_semantic_profile
@@ -48,29 +47,6 @@ app.add_middleware(
 
 os.makedirs(".tmp_uploads", exist_ok=True)
 app.mount("/api/debug-images", StaticFiles(directory=".tmp_uploads"), name="debug-images")
-
-# Active streaming sessions store
-active_sessions: Dict[str, asyncio.Queue] = {}
-
-
-class ProcessFolderRequest(BaseModel):
-    folder_path: str
-    profile_dir: str = "profiles/matera-pre/v1"
-    output_dir: str = "data/test"
-
-
-def scan_pdf_files(folder_path: Path) -> List[Path]:
-    """Recursively find all PDF files in the specified directory."""
-    if not folder_path.exists() or not folder_path.is_dir():
-        raise HTTPException(
-            status_code=400,
-            detail=f"Directory does not exist: {folder_path}"
-        )
-    
-    pdf_files = sorted(
-        list(set(list(folder_path.rglob("*.pdf")) + list(folder_path.rglob("*.PDF"))))
-    )
-    return pdf_files
 
 
 
@@ -261,7 +237,7 @@ def _process_single_file_worker(
 def run_pipeline_on_files(
     pdf_files: List[Path],
     output_excel_path: Path,
-    profile_dir: Path = Path("profiles/matera-pre/v1"),
+    profile_dir: Path = Path("profiles"),
     progress_callback: Optional[Callable[[dict], None]] = None,
     session_id: str = "default_session",
     debug: bool = False,
@@ -343,7 +319,7 @@ def run_pipeline_on_files(
     stats = {
         "total_files": total_files,
         "total_pages": total_pages_count,
-        "total_answers": len(all_page_results) * len(semantic_profile.questions),
+        "total_answers": len(all_page_results) * sum(len(q.options) for q in semantic_profile.questions),
         "needs_review_count": total_review_count,
         "excel_path": str(output_excel_path),
         "excel_file_name": output_excel_path.name,
@@ -398,7 +374,7 @@ async def create_upload_session(
 async def process_stream(
     folder_path: Optional[str] = Query(None, description="Local folder path"),
     session_id: Optional[str] = Query(None, description="Uploaded session ID"),
-    profile_dir: str = Query("profiles/matera-pre/v1"),
+    profile_dir: str = Query("profiles"),
     output_dir: str = Query("data/test"),
     debug: bool = Query(False, description="Enable visual debug output"),
 ):
@@ -488,7 +464,15 @@ async def process_stream(
 @app.get("/api/download")
 def download_excel(file_path: str = Query(..., description="Path to excel file")):
     """Download generated Excel result file."""
-    path = Path(file_path)
+    path = Path(file_path).resolve()
+    
+    workspace_dir = Path.cwd().resolve()
+    data_dir = (workspace_dir / "data").resolve()
+    tmp_dir = (workspace_dir / ".tmp_uploads").resolve()
+    
+    if not (path.is_relative_to(data_dir) or path.is_relative_to(tmp_dir)):
+        raise HTTPException(status_code=403, detail="Access denied.")
+        
     if not path.exists():
         raise HTTPException(status_code=404, detail="File does not exist.")
     return FileResponse(
@@ -499,7 +483,7 @@ def download_excel(file_path: str = Query(..., description="Path to excel file")
 
 
 # Mount UI static files if directory exists
-ui_dir = Path("ui")
+ui_dir = Path("frontend")
 if ui_dir.exists():
     from fastapi.staticfiles import StaticFiles
     app.mount("/", StaticFiles(directory=str(ui_dir), html=True), name="ui")

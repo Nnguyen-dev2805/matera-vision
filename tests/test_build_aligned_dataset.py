@@ -24,8 +24,8 @@ def test_build_aligned_dataset_atomic_rollback(tmp_path: Path):
 
     # Use actual profiles from repo
     repo_root = Path(__file__).parent.parent
-    semantic_path = repo_root / "profiles/matera-pre/v1/semantic.json"
-    layout_path = repo_root / "profiles/matera-pre/v1/layout.json"
+    semantic_path = repo_root / "profiles/semantic.json"
+    layout_path = repo_root / "profiles/layout.json"
 
     out_dir = tmp_path / "aligned_out"
 
@@ -82,8 +82,8 @@ def test_build_aligned_dataset_smoke(tmp_path: Path):
     Image.fromarray(img_arr, mode="RGB").save(ref_path)
 
     repo_root = Path(__file__).parent.parent
-    semantic_path = repo_root / "profiles/matera-pre/v1/semantic.json"
-    layout_path = repo_root / "profiles/matera-pre/v1/layout.json"
+    semantic_path = repo_root / "profiles/semantic.json"
+    layout_path = repo_root / "profiles/layout.json"
 
     out_dir = tmp_path / "aligned_out"
 

@@ -29,7 +29,11 @@ def test_mark_golden_dataset_metrics():
 
     reference_image = Image.open(ref_page_path).convert("RGB")
 
-    from matera.vision.mark import calculate_features, create_mark_map, normalize_score
+    import numpy as np
+
+    from matera.core.layout import BoundingBox, RoiDef
+    from matera.vision.contracts import AlignedPage
+    from matera.vision.mark import process_roi_hsv_ai
 
     for row in page_1_labels:
         image_file = row["image_file"]
@@ -47,34 +51,38 @@ def test_mark_golden_dataset_metrics():
         w = int(row["bbox_w"])
         h = int(row["bbox_h"])
 
-        # Crop the exact same region from the clean reference page
-        ref_crop = reference_image.crop((x, y, x + w, y + h))
-
-        # Resize reference crop to match source crop if there is a tiny discrepancy from generation
-        if src_crop.size != ref_crop.size:
-            ref_crop = ref_crop.resize(src_crop.size)
-
-        # IMPORTANT: Since the provided matera-example.pdf contains identical clean pages,
-        # the golden crops are currently devoid of real handwriting. To prove that the scoring
-        # algorithm separates marks from blanks, we must inject synthetic ink onto the loaded
-        # source crop for expected_mark == "1".
         if expected == "1":
             from PIL import ImageDraw
-
             draw = ImageDraw.Draw(src_crop)
             cx = w // 2
             cy = h // 2
             draw.rectangle([cx - w // 4, cy - h // 4, cx + w // 4, cy + h // 4], fill="black")
-
-        mark_map = create_mark_map(src_crop, ref_crop)
-        features = calculate_features(src_crop, mark_map)
-        score = normalize_score(features, strategy)
-
-        # Assert separation
+            
+        # We simulate a full page by placing the crop at (x,y) on a white page
+        full_page_img = Image.new("RGB", reference_image.size, "white")
+        full_page_img.paste(src_crop, (x, y))
+        
+        aligned_page = AlignedPage(
+            page_number=1,
+            image=full_page_img,
+            profile_form_id="golden",
+            profile_version="v1",
+            reference_dpi=300,
+            warp_matrix=np.eye(3),
+            alignment_score=1.0
+        )
+        
+        ref_bgr = np.array(reference_image)[:, :, ::-1] # RGB to BGR
+        roi = RoiDef(
+            question_id="Q_golden",
+            option_id="O_golden",
+            bbox=BoundingBox(x, y, w, h),
+            mark_strategy_override=strategy
+        )
+        
+        label, method = process_roi_hsv_ai(aligned_page, ref_bgr, roi, "matera-pre")
+        
         if expected == "1":
-            # Real marks might have lower coverage than synthetic, but should be distinctly > 0
-            # A typical checkmark might be 3-5% of the box, translating to 0.3-0.5 score
-            assert score > 0.1, f"Expected > 0.1 for marked {image_file}, got {score}"
+            assert label == "MARKED", f"Expected MARKED for {image_file}, got {label}"
         else:
-            # Blank boxes should be near 0
-            assert score < 0.05, f"Expected < 0.05 for blank {image_file}, got {score}"
+            assert label == "BLANK", f"Expected BLANK for {image_file}, got {label}"

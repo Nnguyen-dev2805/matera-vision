@@ -120,8 +120,8 @@ def test_generate_golden_dataset(tmp_path: Path):
     from matera.core.layout import load_layout_profile
     from matera.core.profile import load_semantic_profile
 
-    semantic_path = Path("profiles/matera-pre/v1/semantic.json")
-    layout_path = Path("profiles/matera-pre/v1/layout.json")
+    semantic_path = Path("profiles/semantic.json")
+    layout_path = Path("profiles/layout.json")
 
     semantic_profile = load_semantic_profile(semantic_path)
     layout_profile = load_layout_profile(layout_path, semantic=semantic_profile)

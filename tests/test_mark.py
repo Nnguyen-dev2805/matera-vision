@@ -1,133 +1,200 @@
+import cv2
 import numpy as np
-import pytest
 from PIL import Image
 
-from matera.vision.mark import calculate_features, create_mark_map, normalize_score
+from matera.core.layout import BoundingBox, PageLayout, RoiDef
+from matera.core.profile import FormProfile, OptionDef, QuestionDef
+from matera.vision.contracts import AlignedPage
+from matera.vision.mark import (
+    UnionFind,
+    extract_mark_scores,
+    get_horizontal_extremes,
+    get_text_bounding_box,
+    min_contour_distance,
+    process_roi_hsv_ai,
+    run_v11_global_topology,
+)
 
 
-def _create_synthetic_patch(mode: str) -> Image.Image:
-    """Helper to create synthetic RGB patches for testing."""
-    arr = np.full((100, 100, 3), 255, dtype=np.uint8)  # White background
+def test_union_find():
+    uf = UnionFind(5)
+    uf.union(0, 1)
+    uf.union(1, 2)
+    uf.union(3, 4)
+    assert uf.find(0) == uf.find(2)
+    assert uf.find(0) != uf.find(3)
+    assert uf.find(3) == uf.find(4)
 
-    # Draw a black printed box representing the form
-    arr[10:90, 10:15, :] = 0
-    arr[10:90, 85:90, :] = 0
-    arr[10:15, 10:90, :] = 0
-    arr[85:90, 10:90, :] = 0
+def test_min_contour_distance():
+    cnt1 = np.array([[[0, 0]], [[0, 1]]], dtype=np.int32)
+    cnt2 = np.array([[[3, 0]], [[3, 1]]], dtype=np.int32)
+    dist = min_contour_distance(cnt1, cnt2)
+    assert dist == 3.0
 
-    if mode == "checked":
-        # Draw a dark blue handwritten checkmark
-        arr[40:60, 40:60, :] = [0, 0, 128]
-    elif mode == "noisy_aligned":
-        # Simulate slight alignment noise (shift box by 1 pixel)
-        arr = np.full((100, 100, 3), 255, dtype=np.uint8)
-        arr[11:91, 11:16, :] = 0
-        arr[11:91, 86:91, :] = 0
-        arr[11:16, 11:91, :] = 0
-        arr[86:91, 11:91, :] = 0
+def test_get_horizontal_extremes():
+    cnt = np.array([[[10, 5]], [[20, 5]], [[15, 10]]], dtype=np.int32)
+    left, right = get_horizontal_extremes(cnt)
+    assert list(left) == [10, 5]
+    assert list(right) == [20, 5]
 
-    return Image.fromarray(arr)
+def test_get_text_bounding_box():
+    gray = np.zeros((100, 100), dtype=np.uint8)
+    gray[40:60, 40:60] = 255
+    x, y, w, h = get_text_bounding_box(gray)
+    assert w > 0 and h > 0
 
+def test_extract_mark_scores():
+    img = Image.new("RGB", (200, 200), color="white")
+    import cv2
+    img_cv = np.array(img)
+    cv2.circle(img_cv, (50, 50), 10, (0, 0, 0), -1)
+    img = Image.fromarray(img_cv)
+    
+    aligned_page = AlignedPage(
+        page_number=1,
+        image=img,
+        profile_form_id="test",
+        profile_version="v1",
+        reference_dpi=300,
+        warp_matrix=np.eye(3),
+        alignment_score=1.0
+    )
+    
+    ref_img = Image.new("RGB", (200, 200), color="white")
+    
+    semantic = FormProfile(
+        form_id="test",
+        form_version="v1",
+        questions=(
+            QuestionDef(
+                question_id="Q1",
+                response_type="single_select",
+                mark_strategy="circle",
+                options=(OptionDef("A"), OptionDef("B")),
+                max_selections=1
+            ),
+        )
+    )
+    
+    layout = PageLayout(
+        page_number=1,
+        width_px=200,
+        height_px=200,
+        anchors=(),
+        rois=(
+            RoiDef(question_id="Q1", option_id="A", bbox=BoundingBox(40, 40, 20, 20)),
+            RoiDef(question_id="Q1", option_id="B", bbox=BoundingBox(100, 100, 20, 20)),
+        )
+    )
+    
+    scores = extract_mark_scores(aligned_page, semantic, layout, ref_img)
+    
+    assert len(scores) == 2
+    score_a = next(s for s in scores if s.option_id == "A")
+    score_b = next(s for s in scores if s.option_id == "B")
+    
+    assert 0.0 <= score_a.score <= 1.0
+    assert 0.0 <= score_b.score <= 1.0
 
-def test_create_mark_map_suppression():
-    """When source and reference are identical, the map should be completely empty."""
-    ref = _create_synthetic_patch("clean")
-    src = _create_synthetic_patch("clean")
+def test_process_roi_hsv_ai(mock_classifier):
+    # Setup
+    img = Image.new("RGB", (100, 100), color="white")
+    aligned_page = AlignedPage(
+        page_number=1, image=img, profile_form_id="test", profile_version="v1",
+        reference_dpi=300, warp_matrix=np.eye(3), alignment_score=1.0
+    )
+    median_ref_bgr = np.zeros((100, 100, 3), dtype=np.uint8)
+    median_ref_bgr.fill(255)
+    roi = RoiDef(question_id="Q1", option_id="A", bbox=BoundingBox(0, 0, 30, 30))
+    
+    label, method = process_roi_hsv_ai(aligned_page, median_ref_bgr, roi, "test")
+    import cv2
+    img_cv = np.array(img)
+    cv2.circle(img_cv, (15, 15), 10, (255, 0, 0), -1)
+    img_ink = Image.fromarray(img_cv)
+    aligned_page_ink = AlignedPage(
+        page_number=1, image=img_ink, profile_form_id="test", profile_version="v1",
+        reference_dpi=300, warp_matrix=np.eye(3), alignment_score=1.0
+    )
+    label2, _ = process_roi_hsv_ai(aligned_page_ink, median_ref_bgr, roi, "test")
+    assert label2 == "MARKED" # Expected MARKED because DummyClf returns 0.9 and we test the AI path
+    
+    # ambiguous branch
+    img_amb_cv = np.zeros((30, 30, 3), dtype=np.uint8)
+    img_amb_cv.fill(255)
+    cv2.circle(img_amb_cv, (15, 15), 3, (255, 0, 0), -1) # smaller circle
+    img_amb = Image.fromarray(img_amb_cv)
+    aligned_page_amb = AlignedPage(
+        page_number=1, image=img_amb, profile_form_id="test", profile_version="v1",
+        reference_dpi=300, warp_matrix=np.eye(3), alignment_score=1.0
+    )
+    label3, _ = process_roi_hsv_ai(aligned_page_amb, median_ref_bgr, roi, "test")
+    assert label3 == "MARKED" # since mock returns 0.9
 
-    mask = create_mark_map(src, ref)
-    mask_arr = np.array(mask)
+def test_run_v11_global_topology():
+    img = Image.new("RGB", (200, 200), color="white")
+    median_ref_bgr = np.full((200, 200, 3), 255, dtype=np.uint8)
+    
+    import cv2
+    img_cv = np.array(img)
+    cv2.circle(img_cv, (100, 100), 10, (0, 0, 0), -1)
+    cv2.circle(img_cv, (105, 105), 10, (0, 0, 0), -1)
+    img = Image.fromarray(img_cv)
+    
+    rois = [
+        RoiDef(question_id="Q1", option_id="A", bbox=BoundingBox(90, 90, 20, 20)),
+        RoiDef(question_id="Q1", option_id="B", bbox=BoundingBox(150, 150, 20, 20)),
+    ]
+    
+    full_mask = np.zeros((200, 200, 3), dtype=np.uint8)
+    
+    marked = run_v11_global_topology(img, median_ref_bgr, rois, full_mask)
+    assert isinstance(marked, set)
 
-    assert mask_arr.shape == (100, 100)
-    assert np.count_nonzero(mask_arr) == 0
+def test_radial_boundary_marked(mock_classifier, mock_text_bbox):
+    # Test boundary degree_covered >= 180 (should be MARKED by LOCAL_RADIAL)
+    img = Image.new("RGB", (200, 200), color="white")
+    # Draw ink covering slightly more than 180 degrees
+    img_cv = np.array(img)
+    cv2.ellipse(img_cv, (100, 100), (20, 20), 0, 0, 190, (0, 0, 0), 3) # 190 degrees covered
+    img_ink = Image.fromarray(img_cv)
+    
+    aligned_page = AlignedPage(
+        page_number=1, image=img_ink, profile_form_id="test", profile_version="v1",
+        reference_dpi=300, warp_matrix=np.eye(3), alignment_score=1.0
+    )
+    median_ref_bgr = np.full((200, 200, 3), 255, dtype=np.uint8)
+    
+    roi = RoiDef(question_id="Q1", option_id="A", bbox=BoundingBox(80, 80, 40, 40))
+    # We don't have direct access to internal method so we test through extract_mark_scores
+    question = QuestionDef(question_id="Q1", response_type="single_select", mark_strategy="circle", max_selections=1, options=(OptionDef(option_id="A", value=1, label="A"),))
+    profile = FormProfile(form_id="test", form_version="v1", questions=(question,))
+    layout = PageLayout(page_number=1, width_px=200, height_px=200, anchors=(), rois=(roi,))
+    
+    import matera.vision.mark as mark
+    scores = mark.extract_mark_scores(aligned_page, profile, layout, img)
+    assert len(scores) == 1
+    assert scores[0].score == 1.0  # MARKED
 
-
-def test_create_mark_map_checked():
-    """A checked box should reveal only the checkmark, suppressing the printed box."""
-    ref = _create_synthetic_patch("clean")
-    src = _create_synthetic_patch("checked")
-
-    mask = create_mark_map(src, ref)
-    mask_arr = np.array(mask)
-
-    # The checkmark is 20x20 = 400 pixels
-    # Since morphology might eat a tiny bit of the boundary or expand it slightly,
-    # we expect the area to be roughly 400.
-    foreground_pixels = np.count_nonzero(mask_arr)
-    assert 300 < foreground_pixels < 500
-
-    # Ensure the printed box (which is near the edges) is suppressed
-    # Edges 0-20 and 80-100 should be completely clean
-    assert np.count_nonzero(mask_arr[0:20, :]) == 0
-    assert np.count_nonzero(mask_arr[80:100, :]) == 0
-
-
-def test_create_mark_map_minor_noise_suppression():
-    """Minor misalignment (1px shift) should be mostly suppressed by morphology."""
-    ref = _create_synthetic_patch("clean")
-    src = _create_synthetic_patch("noisy_aligned")
-
-    mask = create_mark_map(src, ref)
-    mask_arr = np.array(mask)
-
-    # A 1-pixel shift of a 80x80 box boundary creates a lot of difference,
-    # but morphology open should kill most 1-pixel thick noise.
-    # Total pixels is 10000. 0.005 ratio is 50 pixels.
-    # We expect near-zero noise.
-    assert np.count_nonzero(mask_arr) < 50
-
-
-def test_create_mark_map_dimension_mismatch():
-    ref = Image.new("RGB", (100, 100), "white")
-    src = Image.new("RGB", (100, 110), "white")
-
-    with pytest.raises(ValueError, match="same dimensions"):
-        create_mark_map(src, ref)
-
-
-def test_create_mark_map_immutability():
-    ref = _create_synthetic_patch("clean")
-    src = _create_synthetic_patch("checked")
-
-    ref_arr_before = np.array(ref)
-    src_arr_before = np.array(src)
-
-    create_mark_map(src, ref)
-
-    np.testing.assert_array_equal(np.array(ref), ref_arr_before)
-    np.testing.assert_array_equal(np.array(src), src_arr_before)
-
-
-def test_calculate_features_blank():
-    ref = _create_synthetic_patch("clean")
-    src = _create_synthetic_patch("clean")
-    mask = create_mark_map(src, ref)
-
-    features = calculate_features(src, mask)
-
-    # 10000 total pixels. The box is printed in black so dark pixels might be some small amount,
-    # but let's just check the foreground area ratio which should be 0.
-    assert features.foreground_area_ratio == 0.0
-    assert features.contour_count == 0
-    assert features.largest_component_ratio == 0.0
-    assert features.bbox_fill_ratio == 0.0
-
-    score = normalize_score(features, "circle")
-    assert score == 0.0
-
-
-def test_calculate_features_checked():
-    ref = _create_synthetic_patch("clean")
-    src = _create_synthetic_patch("checked")
-    mask = create_mark_map(src, ref)
-
-    features = calculate_features(src, mask)
-
-    # Checkmark is 20x20 = 400 pixels out of 10000 = 0.04
-    assert 0.03 < features.foreground_area_ratio < 0.05
-    assert features.contour_count >= 1
-    assert features.largest_component_ratio > 0.02
-    assert features.bbox_fill_ratio > 0.5  # It's a solid block in the synthetic test
-
-    score = normalize_score(features, "circle")
-    # Score should be ~ 0.04 * 10 = 0.4
-    assert 0.3 < score < 0.5
+def test_radial_boundary_blank(mock_classifier, mock_text_bbox):
+    # Test boundary degree_covered <= 90 (should be BLANK by LOCAL_RADIAL)
+    img = Image.new("RGB", (200, 200), color="white")
+    img_cv = np.array(img)
+    cv2.ellipse(img_cv, (100, 100), (20, 20), 0, 0, 80, (0, 0, 0), 3) # 80 degrees covered
+    img_ink = Image.fromarray(img_cv)
+    
+    aligned_page = AlignedPage(
+        page_number=1, image=img_ink, profile_form_id="test", profile_version="v1",
+        reference_dpi=300, warp_matrix=np.eye(3), alignment_score=1.0
+    )
+    median_ref_bgr = np.full((200, 200, 3), 255, dtype=np.uint8)
+    
+    roi = RoiDef(question_id="Q1", option_id="A", bbox=BoundingBox(80, 80, 40, 40))
+    question = QuestionDef(question_id="Q1", response_type="single_select", mark_strategy="circle", max_selections=1, options=(OptionDef(option_id="A", value=1, label="A"),))
+    profile = FormProfile(form_id="test", form_version="v1", questions=(question,))
+    layout = PageLayout(page_number=1, width_px=200, height_px=200, anchors=(), rois=(roi,))
+    
+    import matera.vision.mark as mark
+    scores = mark.extract_mark_scores(aligned_page, profile, layout, img)
+    assert len(scores) == 1
+    assert scores[0].score == 0.0  # BLANK

@@ -16,6 +16,7 @@ from matera.evaluation.report import EvaluationReport
 from matera.vision.alignment import align_page
 from matera.vision.contracts import AlignmentConfig, RoutingConfig
 from matera.vision.mark import extract_mark_scores
+from matera.vision.reference import generate_median_reference
 from matera.vision.routing import route_page
 
 
@@ -46,26 +47,73 @@ def load_golden_dataset(csv_path: Path) -> dict[str, list[ExpectedAnswer]]:
     return dataset
 
 
-def run_evaluation(dataset_path: Path, output_path: Path) -> None:
+def run_evaluation(dataset_path: Path, output_path: Path, reference_type: str) -> None:
     # 1. Load dataset
     print(f"Loading dataset from {dataset_path}...")
     dataset = load_golden_dataset(dataset_path)
     print(f"Loaded {len(dataset)} unique pages.")
 
-    # We assume 'matera-pre' v1 profile for this baseline harness
-    profile = load_semantic_profile(Path("profiles/matera-pre/v1/semantic.json"))
-    layout_profile = load_layout_profile(Path("profiles/matera-pre/v1/layout.json"))
+    profile = load_semantic_profile(Path("profiles/semantic.json"))
+    layout_profile = load_layout_profile(Path("profiles/layout.json"))
     print(f"Loaded semantic profile: {profile.form_id} {profile.form_version}")
 
+    if reference_type == "hybrid":
+        ref_path = Path("scratch/synthetic_median_reference.png")
+    else:
+        # Fallback to the first page in the dataset if the designated reference doesn't exist
+        ref_path = Path("data/pages/page_1.png")
+        if not ref_path.exists() and dataset:
+            first_page = list(dataset.keys())[0]
+            ref_path = Path("data/pages") / first_page
+            
+    if not ref_path.exists():
+        if not dataset:
+            raise RuntimeError(f"Cannot generate reference: no dataset found at {dataset_path} and {ref_path} is missing.")
+            
+        first_page = list(dataset.keys())[0]
+        anchor_path = Path("data/pages") / first_page
+        if not anchor_path.exists():
+            raise RuntimeError(f"Cannot generate reference: anchor image {anchor_path} does not exist.")
+            
+        anchor_img = Image.open(anchor_path).convert("RGB")
+        aligned_pages = []
+        
+        if reference_type == "hybrid":
+            print(f"Hybrid reference {ref_path} not found. Generating on the fly...")
+            
+            # Align up to 10 pages against the anchor
+            align_cfg = AlignmentConfig(algorithm="orb", transform_model="affine", inlier_threshold=0.05)
+            for page_name in list(dataset.keys())[:10]:
+                img = Image.open(Path("data/pages") / page_name).convert("RGB")
+                src_page = RenderedPage(image=img, page_number=1, width_px=img.width, height_px=img.height, pdf_width_pt=float(img.width), pdf_height_pt=float(img.height))
+                try:
+                    result = align_page(src_page, anchor_img, align_cfg)
+                    if result:
+                        aligned_pages.append(result)
+                except Exception as e:
+                    print(f"Skipping page {page_name} for median reference generation due to alignment error: {e}")
+                    continue
+                
+        if aligned_pages:
+            reference_img = generate_median_reference(aligned_pages)
+            ref_path.parent.mkdir(parents=True, exist_ok=True)
+            reference_img.save(ref_path)
+            print(f"Saved generated reference to {ref_path}")
+        else:
+            print(f"Baseline reference missing, using anchor image: {anchor_path}")
+            ref_path = anchor_path
+            reference_img = Image.open(ref_path).convert("RGB")
+    else:
+        print(f"Using reference image: {ref_path}")
+        reference_img = Image.open(ref_path).convert("RGB")
+
     # Initialize pipeline configs
-    reference_img = Image.open(Path("scratch/synthetic_median_reference.png")).convert("RGB")
     alignment_config = AlignmentConfig(
         algorithm="orb",
         transform_model="affine",
         inlier_threshold=0.05
     )
     routing_config = RoutingConfig(low_threshold=0.2, high_threshold=0.6)
-
 
     report = EvaluationReport()
 
@@ -102,10 +150,10 @@ def run_evaluation(dataset_path: Path, output_path: Path) -> None:
             # matera-pre is a 1-page form, so all 10 PDFs are just page 1 filled out 10 times.
             layout = layout_profile.pages[0]
         except IndexError:
-            print(f"Warning: No layout found in profile. Skipping.")
+            print("Warning: No layout found in profile. Skipping.")
             continue
 
-        # Count the page regardless of whether it crashes (Risk 2 Fix)
+        # Count the page regardless of whether it crashes
         report.total_pages += 1
 
         # Run Pipeline
@@ -142,7 +190,7 @@ def run_evaluation(dataset_path: Path, output_path: Path) -> None:
                 report.by_response_type[resp_type] = ConfusionMatrix()
 
             if ans is None:
-                # System Error / Data drop - not a review! (Risk 3 Fix)
+                # System Error / Data drop - not a review!
                 is_review = False
                 selected = 0
             else:
@@ -245,23 +293,30 @@ def run_evaluation(dataset_path: Path, output_path: Path) -> None:
     print(f"Global Risk: {report.overall_metrics.risk:.2%}")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "w") as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(report_dict, f, indent=2)
     print(f"\nReport saved to {output_path}")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Evaluate Hybrid Pipeline")
+    parser = argparse.ArgumentParser(description="Evaluate End-to-End Pipeline")
     parser.add_argument("--dataset", type=Path, required=True, help="Path to labels.csv")
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("data/evaluation/hybrid_report.json"),
+        default=Path("data/evaluation/report.json"),
         help="Output JSON report",
+    )
+    parser.add_argument(
+        "--reference-type",
+        type=str,
+        choices=["baseline", "hybrid"],
+        default="hybrid",
+        help="Which reference image to use (baseline or hybrid)",
     )
 
     args = parser.parse_args()
-    run_evaluation(args.dataset, args.output)
+    run_evaluation(args.dataset, args.output, args.reference_type)
 
 
 if __name__ == "__main__":

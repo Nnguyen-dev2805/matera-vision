@@ -1,20 +1,23 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 from PIL import Image
 
-from matera.vision.contracts import MarkScore, MarkScoringConfig, ROIFeature, QuestionMarginResult
+from matera.vision.contracts import MarkScore
 
 if TYPE_CHECKING:
+    from matera.classifier.model import AmbiguityClassifier
     from matera.core.layout import PageLayout
     from matera.core.profile import FormProfile
     from matera.vision.contracts import AlignedPage
 
-from scipy.spatial.distance import cdist
 import math
+
+from scipy.spatial.distance import cdist
 
 # --- V17 Geometric Configs ---
 NUM_BINS = 72
@@ -221,7 +224,7 @@ def get_local_roi_crops_hsv(aligned_image_rgb: Image.Image, median_ref_bgr: np.n
     
     return target_bgr, mask_final, (crop_x1, crop_y1, crop_x2, crop_y2)
 
-def process_roi_hsv_ai(aligned_page: "AlignedPage", median_ref_bgr: np.ndarray, roi, method_prefix: str, clf: "AmbiguityClassifier") -> tuple[str, str]:
+def process_roi_hsv_ai(aligned_page: "AlignedPage", median_ref_bgr: np.ndarray, roi, method_prefix: str) -> tuple[str, str]:
     from matera.classifier.model import extract_hog_features
     _, mask_hsv, _ = get_local_roi_crops_hsv(aligned_page.image, median_ref_bgr, roi.bbox, 0)
     h, w = mask_hsv.shape
@@ -238,6 +241,11 @@ def process_roi_hsv_ai(aligned_page: "AlignedPage", median_ref_bgr: np.ndarray, 
         return "MARKED", f"{method_prefix}_L2"
     else:
         feat = extract_hog_features(safe_mask)
+        try:
+            clf = _get_classifier()
+        except FileNotFoundError:
+            # Fallback to simple threshold if model missing
+            return "AMBIGUOUS", f"{method_prefix}_L2_NO_AI"
         prob_mark = clf.predict_proba([feat])[0]
         if prob_mark > 0.85:
             return "MARKED", f"{method_prefix}_AI ({prob_mark:.2f})"
@@ -252,8 +260,11 @@ _clf = None
 def _get_classifier() -> "AmbiguityClassifier":
     global _clf
     if _clf is None:
+        model_path = Path("models/shape_classifier.pkl")
+        if not model_path.exists():
+            raise FileNotFoundError(f"Model file not found: {model_path}")
         from matera.classifier.model import AmbiguityClassifier
-        _clf = AmbiguityClassifier.load("models/shape_classifier.pkl")
+        _clf = AmbiguityClassifier.load(str(model_path))
     return _clf
 
 def extract_mark_scores(
@@ -309,7 +320,6 @@ def extract_mark_scores(
             
     # 3. Process ROIs
     scores = []
-    clf = _get_classifier()
     
     for roi in scaled_rois:
         strategy = roi.mark_strategy_override or strategy_map.get(roi.question_id)
@@ -386,7 +396,7 @@ def extract_mark_scores(
                     method = "LOCAL_RADIAL"
                     mask_bgr = cv2.cvtColor(mask_closed, cv2.COLOR_GRAY2BGR)
                 else:
-                    pred, method = process_roi_hsv_ai(aligned_page, median_ref_bgr, roi, "FALLBACK", clf)
+                    pred, method = process_roi_hsv_ai(aligned_page, median_ref_bgr, roi, "FALLBACK")
                     _, mask_hsv, _ = get_local_roi_crops_hsv(aligned_page.image, median_ref_bgr, roi.bbox, 0)
                     mask_bgr = cv2.cvtColor(mask_hsv, cv2.COLOR_GRAY2BGR)
                     mask_bgr[np.where((mask_bgr == [255, 255, 255]).all(axis=2))] = (255, 0, 255) # Magenta for Layer 3
@@ -400,7 +410,7 @@ def extract_mark_scores(
                     pass
         else:
             # Q14 Checkbox Logic
-            pred, method = process_roi_hsv_ai(aligned_page, median_ref_bgr, roi, "Q14", clf)
+            pred, method = process_roi_hsv_ai(aligned_page, median_ref_bgr, roi, "HSV_AI")
             if debug_full_mask is not None:
                 _, mask_hsv, _ = get_local_roi_crops_hsv(aligned_page.image, median_ref_bgr, roi.bbox, 0)
                 mask_bgr = cv2.cvtColor(mask_hsv, cv2.COLOR_GRAY2BGR)
@@ -415,14 +425,6 @@ def extract_mark_scores(
         # 4. Map to MarkScore
         score_val = 1.0 if pred == "MARKED" else 0.0 if pred == "BLANK" else 0.5
         
-        # Create a dummy ROIFeature to satisfy contract
-        dummy_feat = ROIFeature(
-            blue_ratio=1.0 if pred == "MARKED" else 0.0,
-            dark_ratio=1.0 if pred == "MARKED" else 0.0,
-            margin_detected=(method == "GLOBAL_HULL"),
-            enclosed=(method == "GLOBAL_HULL")
-        )
-        
         evidence_path = None
         if debug_dir:
             evidence_file = debug_path / f"page_{aligned_page.page_number}_{roi.question_id}_{roi.option_id}.png"
@@ -436,7 +438,6 @@ def extract_mark_scores(
                 score=score_val,
                 strategy=strategy,
                 method=method,
-                features=dummy_feat,
                 image_crop=src_crop,
                 evidence_path=evidence_path,
             )

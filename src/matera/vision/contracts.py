@@ -56,25 +56,6 @@ class AlignmentError(Exception):
 
 
 @dataclass(frozen=True)
-class ROIFeature:
-    """Interpretable, deterministic geometric and pixel measurements for a single ROI."""
-
-    blue_ratio: float
-    dark_ratio: float
-    margin_detected: bool
-    enclosed: bool
-
-
-@dataclass(frozen=True)
-class QuestionMarginResult:
-    """Result of scanning the left margin of a question for enclosing circles/ovals."""
-
-    question_id: str
-    detected_option_ids: list[str]
-    has_ink_in_margin: bool
-
-
-@dataclass(frozen=True)
 class MarkScore:
     """The normalized mark score and corresponding features for an evaluated option."""
 
@@ -83,27 +64,12 @@ class MarkScore:
     score: float
     strategy: str
     method: str
-    features: ROIFeature
     image_crop: Image.Image | None = None
     evidence_path: Path | None = None
 
     def __post_init__(self):
         if not (0.0 <= self.score <= 1.0):
             raise ValueError(f"Mark score must be between 0.0 and 1.0, got {self.score}")
-
-
-@dataclass(frozen=True)
-class MarkScoringConfig:
-    """Configuration for template-difference mark scoring."""
-
-    # Difference threshold (0-255) to consider a pixel as 'ink' vs 'background'
-    diff_threshold: int = 30
-
-    # Kernel size for morphological operations to clean up alignment noise
-    morph_kernel_size: tuple[int, int] = (3, 3)
-
-    # The multiplier for foreground_area_ratio to map to a 0.0-1.0 score for circle/checkbox
-    area_score_multiplier: float = 10.0
 
 
 @dataclass(frozen=True)

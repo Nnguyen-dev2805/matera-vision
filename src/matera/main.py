@@ -1,6 +1,7 @@
 import argparse
 import sys
 from pathlib import Path
+
 from PIL import Image
 
 from matera.core.layout import load_layout_profile
@@ -33,7 +34,10 @@ def process_pdf(pdf_path: Path, output_path: Path, profile_dir: Path) -> None:
     print(f"Extracted {len(pages)} pages from PDF.")
     
     # 3. Setup Configurations
-    reference_img = Image.open("scratch/synthetic_median_reference.png").convert("RGB")
+    ref_img_path = Path("scratch/synthetic_median_reference.png")
+    if not ref_img_path.exists():
+        raise RuntimeError(f"Reference image {ref_img_path} not found. Please run evaluate.py first to generate it.")
+    reference_img = Image.open(ref_img_path).convert("RGB")
     alignment_config = AlignmentConfig(
         algorithm="orb",
         transform_model="affine",
@@ -97,7 +101,7 @@ def main() -> int:
     process_parser.add_argument("--pdf", type=Path, required=True, help="Input PDF file")
     process_parser.add_argument("--output", type=Path, required=True, help="Output Excel file")
     process_parser.add_argument(
-        "--profile-dir", type=Path, default=Path("profiles/matera-pre/v1"),
+        "--profile-dir", type=Path, default=Path("profiles"),
         help="Directory containing semantic.json and layout.json"
     )
     process_parser.add_argument(

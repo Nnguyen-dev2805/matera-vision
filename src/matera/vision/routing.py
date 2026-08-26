@@ -8,8 +8,6 @@ from matera.core.profile import FormProfile
 from matera.vision.contracts import MarkScore, RoutingConfig
 
 
-
-
 def route_page(
     mark_scores: list[MarkScore],
     profile: FormProfile,
@@ -48,7 +46,7 @@ def route_page(
                 f"Mark strategy mismatch for {ms.question_id}.{ms.option_id}: "
                 f"expected {q_def.mark_strategy}, got {ms.strategy}"
             )
-
+        
         provided_options.add(key)
         score_by_key[key] = ms
 
@@ -67,9 +65,9 @@ def route_page(
         final_selections = {}
 
         for ms in q_scores:
-            if ms.score == 1.0:
+            if ms.score >= config.high_threshold:
                 original_selections[ms.option_id] = True
-            elif ms.score == 0.0:
+            elif ms.score < config.low_threshold:
                 original_selections[ms.option_id] = False
             else:
                 original_selections[ms.option_id] = None # Needs Review

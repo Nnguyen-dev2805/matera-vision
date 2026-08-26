@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 def main():
-    base_dir = Path("profiles/matera-pre/v1")
+    base_dir = Path("profiles")
     draft_path = base_dir / "roi-draft.json"
 
     if not draft_path.exists():
