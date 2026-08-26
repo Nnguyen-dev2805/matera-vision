@@ -879,6 +879,37 @@ def _write_index_html(out_dir: Path, report: PixelProbeReport) -> None:
         html += `<div class="card"><h3>Global Topology Analysis</h3><p>Skipped: ${{globalTopo.skip_reason}}</p></div>`;
       }}
       
+      if (globalTopo && globalTopo.ink_pipeline_artifacts && Object.keys(globalTopo.ink_pipeline_artifacts).length > 0) {{
+        let sortedSteps = Object.keys(globalTopo.ink_pipeline_artifacts).sort();
+        let imagesHtml = sortedSteps.map(step => `<img src="${{qId}}/${{globalTopo.ink_pipeline_artifacts[step]}}" data-stage-name="${{step}}" />`).join('');
+        let metricsHtml = '';
+        if (globalTopo.ink_pipeline_metrics) {{
+            metricsHtml = Object.entries(globalTopo.ink_pipeline_metrics).map(([k, v]) => `<div style="border:1px solid var(--border); padding: 4px;"><strong>${{k}}:</strong> ${{v}}</div>`).join('');
+        }}
+        html += `<div class="card"><details style="padding: 8px;">
+          <summary style="cursor:pointer;font-weight:bold;">Ink Mask Pipeline (Global Topology)</summary>
+          <div class="ink-pipeline-section" style="margin-top:8px;">
+            <div class="step-stepper">
+              <div class="stepper-image-container">
+                ${{imagesHtml}}
+              </div>
+              <div class="stepper-controls">
+                <button class="prev-btn">&laquo; Prev</button>
+                <span class="stepper-stage-name"></span>
+                <button class="next-btn">Next &raquo;</button>
+                <button class="compare-btn">Compare</button>
+              </div>
+            </div>
+            <div style="margin-top:16px;">
+              <h4>Metrics</h4>
+              <div class="metric-grid">
+                ${{metricsHtml}}
+              </div>
+            </div>
+          </div>
+        </details></div>`;
+      }}
+      
       // Local Options Cards
       html += `<div class="card"><h3>Local Options Analysis</h3><div class="grid-3">`;
       traces.forEach(t => {{
@@ -935,6 +966,7 @@ def _write_index_html(out_dir: Path, report: PixelProbeReport) -> None:
               </ul>
               ${{suspHtml}}
             </div>
+            ${{localInkHtml}}
           </div>
         `;
       }});
@@ -947,6 +979,7 @@ def _write_index_html(out_dir: Path, report: PixelProbeReport) -> None:
       }}
       
       content.innerHTML = html;
+      initSteppers();
     }}
     
     document.addEventListener("DOMContentLoaded", init);
