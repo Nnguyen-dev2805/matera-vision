@@ -795,14 +795,14 @@ def _write_index_html(out_dir: Path, report: PixelProbeReport) -> None:
     .metrics-list {{ list-style: none; padding: 0; margin: 0; font-size: 13px; }}
     .metrics-list li {{ display: flex; justify-content: space-between; margin-bottom: 4px; border-bottom: 1px dashed #444; }}
   
-        .step-stepper { display: flex; flex-direction: column; align-items: center; gap: 1rem; margin: 1rem 0; }
-        .stepper-controls { display: flex; gap: 1rem; align-items: center; justify-content: center; width: 100%; }
-        .stepper-controls button { padding: 0.5rem 1rem; cursor: pointer; }
-        .stepper-stage-name { font-weight: bold; min-width: 200px; text-align: center; }
-        .stepper-image-container { position: relative; width: 100%; max-width: 600px; aspect-ratio: 1; border: 1px solid #ccc; overflow: hidden; background: #000; }
-        .stepper-image-container img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity 0.3s ease-in-out; }
-        .stepper-image-container img.active { opacity: 1; }
-        .stepper-image-container img.compare-mode { mix-blend-mode: difference; z-index: 10; opacity: 0.8 !important; }
+        .step-stepper {{ display: flex; flex-direction: column; align-items: center; gap: 1rem; margin: 1rem 0; }}
+        .stepper-controls {{ display: flex; gap: 1rem; align-items: center; justify-content: center; width: 100%; }}
+        .stepper-controls button {{ padding: 0.5rem 1rem; cursor: pointer; }}
+        .stepper-stage-name {{ font-weight: bold; min-width: 200px; text-align: center; }}
+        .stepper-image-container {{ position: relative; width: 100%; max-width: 600px; aspect-ratio: 1; border: 1px solid #ccc; overflow: hidden; background: #000; }}
+        .stepper-image-container img {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity 0.3s ease-in-out; }}
+        .stepper-image-container img.active {{ opacity: 1; }}
+        .stepper-image-container img.compare-mode {{ mix-blend-mode: difference; z-index: 10; opacity: 0.8 !important; }}
     </style>
 </head>
 <body>
@@ -886,6 +886,41 @@ def _write_index_html(out_dir: Path, report: PixelProbeReport) -> None:
         let imgHtml = art ? `<div class="img-box"><img src="${{art}}"></div>` : "";
         
         let suspHtml = t.suspicion_notes && t.suspicion_notes.length ? `<div style="color:var(--warn);font-size:12px;margin-top:8px;">Suspicion:<ul><li>${{t.suspicion_notes.join('</li><li>')}}</li></ul></div>` : "";
+
+        let localInkHtml = '';
+        if (t.local_ink_pipeline_artifacts && Object.keys(t.local_ink_pipeline_artifacts).length > 0) {{
+            let sortedSteps = Object.keys(t.local_ink_pipeline_artifacts).sort();
+            let imagesHtml = sortedSteps.map(step => `<img src="${{qId}}/${{t.option_id}}/${{t.local_ink_pipeline_artifacts[step]}}" data-stage-name="${{step}}" />`).join('');
+            
+            let metricsHtml = '';
+            if (t.local_ink_pipeline_metrics) {{
+                metricsHtml = Object.entries(t.local_ink_pipeline_metrics).map(([k, v]) => `<div style="border:1px solid var(--border); padding: 4px;"><strong>${{k}}:</strong> ${{v}}</div>`).join('');
+            }}
+            
+            localInkHtml = `<div class="card"><details style="padding: 8px;">
+              <summary style="cursor:pointer;font-weight:bold;">Ink Mask Pipeline (Local ROI)</summary>
+              <div class="ink-pipeline-section" style="margin-top:8px;">
+                <div class="step-stepper">
+                  <div class="stepper-image-container">
+                    ${{imagesHtml}}
+                  </div>
+                  <div class="stepper-controls">
+                    <button class="prev-btn">&laquo; Prev</button>
+                    <span class="stepper-stage-name"></span>
+                    <button class="next-btn">Next &raquo;</button>
+                    <button class="compare-btn">Compare</button>
+                  </div>
+                </div>
+                <div style="margin-top:16px;">
+                  <h4>Metrics</h4>
+                  <div class="metric-grid">
+                    ${{metricsHtml}}
+                  </div>
+                </div>
+              </div>
+            </details></div>`;
+        }}
+
         
         html += `
           <div style="border: 1px solid #444; border-radius: 4px; padding: 12px; background: #222;">
@@ -916,8 +951,8 @@ def _write_index_html(out_dir: Path, report: PixelProbeReport) -> None:
     
     document.addEventListener("DOMContentLoaded", init);
   
-        function initSteppers() {
-            document.querySelectorAll('.step-stepper').forEach(stepper => {
+        function initSteppers() {{
+            document.querySelectorAll('.step-stepper').forEach(stepper => {{
                 const images = stepper.querySelectorAll('.stepper-image-container img');
                 const prevBtn = stepper.querySelector('.prev-btn');
                 const nextBtn = stepper.querySelector('.next-btn');
@@ -926,41 +961,41 @@ def _write_index_html(out_dir: Path, report: PixelProbeReport) -> None:
                 let currentIndex = 0;
                 let isCompare = false;
 
-                function update() {
-                    images.forEach((img, idx) => {
+                function update() {{
+                    images.forEach((img, idx) => {{
                         img.classList.remove('active');
                         img.classList.remove('compare-mode');
-                        if (idx === currentIndex) {
+                        if (idx === currentIndex) {{
                             img.classList.add('active');
                             stageName.textContent = img.dataset.stageName;
-                        } else if (isCompare && idx === currentIndex - 1) {
+                        }} else if (isCompare && idx === currentIndex - 1) {{
                             img.classList.add('active');
                             img.classList.add('compare-mode');
-                        }
-                    });
+                        }}
+                    }});
                     prevBtn.disabled = currentIndex === 0;
                     nextBtn.disabled = currentIndex === images.length - 1;
                     compareBtn.disabled = currentIndex === 0;
                     if (isCompare) compareBtn.style.background = '#ddd';
                     else compareBtn.style.background = '';
-                }
+                }}
 
-                prevBtn.addEventListener('click', () => {
+                prevBtn.addEventListener('click', () => {{
                     if (currentIndex > 0) currentIndex--;
                     update();
-                });
-                nextBtn.addEventListener('click', () => {
+                }});
+                nextBtn.addEventListener('click', () => {{
                     if (currentIndex < images.length - 1) currentIndex++;
                     update();
-                });
-                compareBtn.addEventListener('click', () => {
+                }});
+                compareBtn.addEventListener('click', () => {{
                     isCompare = !isCompare;
                     update();
-                });
+                }});
                 
                 update();
-            });
-        }
+            }});
+        }}
         window.addEventListener('DOMContentLoaded', initSteppers);
     </script>
 </body>
