@@ -214,3 +214,35 @@ def test_generate_question_artifacts(tmp_path):
     
     assert (tmp_path / artifacts["global"]).exists()
     assert (tmp_path / artifacts["option_a"]).exists()
+
+def test_trace_global_topology_includes_crop_expansion():
+    from matera.tools.pixel_probe import trace_global_topology
+    from matera.core.layout import BoundingBox, RoiDef
+    from PIL import Image
+    import numpy as np
+    import cv2
+
+    reference = Image.new("RGB", (140, 140), "white")
+    marked = np.full((140, 140, 3), 255, dtype=np.uint8)
+    cv2.circle(marked, (70, 70), 30, (0, 0, 0), 2)
+    aligned = Image.fromarray(marked)
+    
+    rois = [
+        RoiDef("Q1", "a", BoundingBox(50, 50, 10, 10)),
+        RoiDef("Q1", "b", BoundingBox(80, 50, 10, 10))
+    ]
+    
+    trace = trace_global_topology(
+        aligned_image_rgb=aligned,
+        median_ref_bgr=np.array(reference),
+        rois=rois,
+        question_id="Q1"
+    )
+    
+    assert hasattr(trace, "crop_expansion")
+    assert isinstance(trace.crop_expansion, dict)
+    assert "initial_pad" in trace.crop_expansion
+    assert "final_pads" in trace.crop_expansion
+    assert "expanded" in trace.crop_expansion
+    assert "stop_reason" in trace.crop_expansion
+    assert "iterations" in trace.crop_expansion
