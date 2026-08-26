@@ -89,3 +89,36 @@ def test_analyze_roi_pixels_trace_is_json_serializable_with_opencv_ints():
     )
 
     json.dumps(trace.as_dict())
+
+
+def test_new_report_models_serializability():
+    import dataclasses
+    from matera.tools.pixel_probe import PixelProbeReport, GlobalTopologyTrace, _json_ready
+
+    report = PixelProbeReport(
+        report_version=2,
+        source_pdf="test.pdf",
+        page_number=1,
+        alignment_score=1.0,
+        warp_matrix=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        filters={"question": None, "option": None, "routing_evaluated": True},
+        thresholds={},
+        questions=[],
+        global_topology={
+            "Q1": GlobalTopologyTrace(
+                question_id="Q1",
+                ran=True,
+                skip_reason=None,
+                group_crop={},
+                option_centers=[],
+                contours=[],
+                clusters=[],
+                global_marked=[],
+                artifacts={},
+            )
+        },
+        traces=[],
+        artifacts={},
+    )
+    data = _json_ready(dataclasses.asdict(report))
+    assert data["report_version"] == 2

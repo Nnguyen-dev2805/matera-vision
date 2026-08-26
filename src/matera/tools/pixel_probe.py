@@ -37,6 +37,65 @@ from matera.vision.mark import (
 
 
 @dataclasses.dataclass
+class ContourTrace:
+    contour_id: int
+    area: float
+    bbox: list[int]
+    status: str
+    reject_reason: str | None
+
+@dataclasses.dataclass
+class ClusterTrace:
+    cluster_id: int
+    contour_ids: list[int]
+    total_area: float
+    hull_area: float
+    solidity: float
+    bbox: list[int]
+    qualifies_global: bool
+    inside_options: list[str]
+    rejection_reasons: list[str]
+
+@dataclasses.dataclass
+class GlobalTopologyTrace:
+    question_id: str
+    ran: bool
+    skip_reason: str | None
+    group_crop: dict[str, int]
+    option_centers: list[dict[str, Any]]
+    contours: list[ContourTrace]
+    clusters: list[ClusterTrace]
+    global_marked: list[str]
+    artifacts: dict[str, str]
+
+@dataclasses.dataclass
+class RoiStageTrace:
+    name: str
+    status: str
+    reason: str
+    metrics: dict[str, Any]
+    artifacts: list[str]
+
+@dataclasses.dataclass
+class QuestionTrace:
+    question_id: str
+
+@dataclasses.dataclass
+class PixelProbeReport:
+    report_version: int
+    source_pdf: str
+    page_number: int
+    alignment_score: float
+    warp_matrix: list[list[float]]
+    filters: dict[str, Any]
+    thresholds: dict[str, Any]
+    questions: list[Any]
+    global_topology: dict[str, GlobalTopologyTrace]
+    traces: list[Any]
+    artifacts: dict[str, str]
+
+
+@dataclasses.dataclass
 class RoiPixelTrace:
     page_number: int
     question_id: str
@@ -66,6 +125,7 @@ class RoiPixelTrace:
     routing_reason: str | None = None
     decision_path: list[str] = dataclasses.field(default_factory=list)
     suspicion_notes: list[str] = dataclasses.field(default_factory=list)
+    stages: list[RoiStageTrace] = dataclasses.field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         return _json_ready(dataclasses.asdict(self))
