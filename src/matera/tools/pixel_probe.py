@@ -589,6 +589,7 @@ def _trace_row(trace: RoiPixelTrace) -> dict[str, Any]:
         "prediction": trace.prediction,
         "method": trace.method,
         "score": trace.score,
+        "is_global_marked": trace.is_global_marked,
         "routing_status": trace.routing_status or "",
         "routing_selected": trace.routing_selected,
         "routing_reason": trace.routing_reason or "",
@@ -605,7 +606,6 @@ def _trace_row(trace: RoiPixelTrace) -> dict[str, Any]:
         ),
         "suspicion_notes": " | ".join(trace.suspicion_notes),
     }
-
 
 def _write_roi_artifacts(out_dir: Path, trace: RoiPixelTrace, masks: dict[str, Any]) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -676,7 +676,8 @@ def _write_roi_artifacts(out_dir: Path, trace: RoiPixelTrace, masks: dict[str, A
     (out_dir / "decision_trace.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _write_summary(out_dir: Path, traces: list[RoiPixelTrace], source_pdf: Path) -> None:
+def _write_summary(out_dir: Path, report: PixelProbeReport) -> None:
+    traces = report.traces
     review = [t for t in traces if t.routing_status == "needs_review"]
     suspect = [t for t in traces if t.suspicion_notes]
     marked = [t for t in traces if t.prediction == "MARKED"]
@@ -685,16 +686,26 @@ def _write_summary(out_dir: Path, traces: list[RoiPixelTrace], source_pdf: Path)
     lines = [
         "# Pixel Probe Summary",
         "",
-        f"- Source PDF: `{source_pdf}`",
-        f"- Page: {traces[0].page_number if traces else 'n/a'}",
+        f"- Source PDF: `{report.source_pdf}`",
+        f"- Page: {report.page_number}",
         f"- Total options: {len(traces)}",
         f"- Marked: {len(marked)}",
         f"- Blank: {len(blank)}",
         f"- Needs review: {len(review)}",
         f"- Suspicious traces: {len(suspect)}",
         "",
-        "## Needs Review",
+        "## Global Topology",
     ]
+    for q_id, gt in report.global_topology.items():
+        if gt.ran:
+            lines.append(f"- **{q_id}**: {len(gt.contours)} valid contours, {len(gt.clusters)} clusters. Global marked: {', '.join(gt.global_marked) if gt.global_marked else 'None'}")
+        else:
+            lines.append(f"- **{q_id}**: Skipped ({gt.skip_reason})")
+            
+    lines.extend([
+        "",
+        "## Needs Review",
+    ])
     if review:
         for t in review:
             lines.append(f"- `{t.question_id}/{t.option_id}`: {t.routing_reason}")
@@ -717,7 +728,6 @@ def _write_summary(out_dir: Path, traces: list[RoiPixelTrace], source_pdf: Path)
         )
 
     (out_dir / "page_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-
 
 def _write_index_html(out_dir: Path, report: PixelProbeReport) -> None:
     html_text = f"""<!doctype html>
@@ -959,6 +969,15 @@ def run_pixel_probe(
         traces.append(trace)
         masks_by_key[(trace.question_id, trace.option_id)] = masks
 
+    global_topology_traces = {}
+    
+    # Trace global topology per question for explainability UI
+    for q_id, rois in rois_by_q.items():
+        if "Q14" in q_id:
+            continue
+        g_trace = trace_global_topology(aligned_page.image, median_ref_bgr, rois, q_id)
+        global_topology_traces[q_id] = g_trace
+
     routing_config = RoutingConfig(low_threshold=0.2, high_threshold=0.6)
     if question or option:
         # Routing constraints need the complete page. For filtered microscope runs,
@@ -980,23 +999,35 @@ def run_pixel_probe(
             trace.routing_reason = routing["review_reason"]
         roi_dir = page_dir / _safe_name(trace.question_id) / _safe_name(trace.option_id)
         _write_roi_artifacts(roi_dir, trace, masks_by_key[(trace.question_id, trace.option_id)])
+        
+    for q_id, g_trace in global_topology_traces.items():
+        q_traces = [t for t in traces if t.question_id == q_id]
+        if not q_traces:
+            continue
+        q_artifacts = generate_question_artifacts(
+            aligned_page.image, median_ref_bgr, g_trace, q_traces, page_dir
+        )
+        g_trace.artifacts = q_artifacts
 
     overlay = _draw_page_overlay(aligned_page.image, traces)
     _write_image(page_dir / "page_overlay_all_rois.png", overlay)
 
-    mark_scores = [
-        MarkScore(t.question_id, t.option_id, t.score, t.strategy, t.method) for t in traces
-    ]
-    page_trace = {
-        "source_pdf": str(pdf_path),
-        "page_number": page_number,
-        "alignment_score": aligned_page.alignment_score,
-        "warp_matrix": np.asarray(aligned_page.warp_matrix).tolist(),
-        "mark_scores": [dataclasses.asdict(ms) for ms in mark_scores],
-        "traces": [t.as_dict() for t in traces],
-    }
-    with open(page_dir / "page_trace.json", "w", encoding="utf-8") as f:
-        json.dump(page_trace, f, indent=2, ensure_ascii=False)
+    report = PixelProbeReport(
+        report_version=2,
+        source_pdf=str(pdf_path),
+        page_number=page_number,
+        alignment_score=aligned_page.alignment_score,
+        warp_matrix=np.asarray(aligned_page.warp_matrix).tolist(),
+        filters={"question": question, "option": option, "routing_evaluated": not bool(question or option)},
+        thresholds={"routing_low": routing_config.low_threshold, "routing_high": routing_config.high_threshold},
+        questions=[], 
+        global_topology=global_topology_traces,
+        traces=traces,
+        artifacts={"page_overlay": "page_overlay_all_rois.png"}
+    )
+
+    with open(page_dir / "report.json", "w", encoding="utf-8") as f:
+        json.dump(_json_ready(dataclasses.asdict(report)), f, indent=2, ensure_ascii=False)
 
     with open(page_dir / "roi_trace.csv", "w", newline="", encoding="utf-8") as f:
         rows = [_trace_row(t) for t in traces]
@@ -1004,10 +1035,9 @@ def run_pixel_probe(
         writer.writeheader()
         writer.writerows(rows)
 
-    _write_summary(page_dir, traces, pdf_path)
-    _write_index_html(page_dir, traces)
+    _write_summary(page_dir, report)
+    _write_index_html(page_dir, report)
     return page_dir
-
 
 def _default_debug_pdf() -> Path:
     debug_dir = Path("data/test/debug")
