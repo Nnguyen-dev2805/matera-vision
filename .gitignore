@@ -57,3 +57,6 @@ htmlcov/
 .ruff_cache/
 *.swp
 *.swo
+
+# Antigravity/Agents
+.agents/
