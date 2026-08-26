@@ -719,62 +719,175 @@ def _write_summary(out_dir: Path, traces: list[RoiPixelTrace], source_pdf: Path)
     (out_dir / "page_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _write_index_html(out_dir: Path, traces: list[RoiPixelTrace]) -> None:
-    rows = []
-    for t in traces:
-        rel_dir = f"{_safe_name(t.question_id)}/{_safe_name(t.option_id)}"
-        rows.append(
-            "<tr>"
-            f"<td>{html.escape(t.question_id)}</td>"
-            f"<td>{html.escape(t.option_id)}</td>"
-            f"<td>{html.escape(t.prediction)}</td>"
-            f"<td>{html.escape(t.method)}</td>"
-            f"<td>{t.score:.1f}</td>"
-            f"<td>{t.radial_degrees_covered:.1f}</td>"
-            f"<td>{html.escape(t.routing_status or '')}</td>"
-            f"<td>{html.escape(t.routing_reason or '')}</td>"
-            f"<td><a href='{rel_dir}/decision_trace.txt'>trace</a></td>"
-            f"<td><img src='{rel_dir}/09_overlay_decision.png' width='120'></td>"
-            "</tr>"
-        )
-
+def _write_index_html(out_dir: Path, report: PixelProbeReport) -> None:
     html_text = f"""<!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Matera Pixel Probe</title>
+  <title>Matera Pixel Probe Debugger</title>
   <style>
-    body {{ font-family: Arial, sans-serif; margin: 24px; color: #1f2933; }}
-    table {{ border-collapse: collapse; width: 100%; font-size: 13px; }}
-    th, td {{ border: 1px solid #d0d7de; padding: 6px; vertical-align: top; }}
-    th {{ background: #f6f8fa; position: sticky; top: 0; }}
-    img {{ image-rendering: auto; }}
-    .page {{ max-width: 900px; border: 1px solid #d0d7de; }}
+    :root {{
+      --bg: #121212; --text: #e0e0e0; --surface: #1e1e1e; --border: #333;
+      --primary: #bb86fc; --success: #03dac6; --error: #cf6679; --warn: #ffb74d;
+    }}
+    body {{
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0; padding: 0; display: flex; height: 100vh;
+      background: var(--bg); color: var(--text);
+    }}
+    a {{ color: var(--primary); text-decoration: none; }}
+    a:hover {{ text-decoration: underline; }}
+    #sidebar {{
+      width: 280px; border-right: 1px solid var(--border); background: var(--surface);
+      overflow-y: auto; padding: 16px;
+    }}
+    #main {{
+      flex: 1; overflow-y: auto; padding: 24px;
+    }}
+    .q-item {{
+      padding: 8px 12px; margin-bottom: 8px; border-radius: 4px; cursor: pointer;
+      border: 1px solid var(--border); transition: background 0.2s;
+    }}
+    .q-item:hover, .q-item.active {{ background: #333; border-color: var(--primary); }}
+    .status-badge {{
+      display: inline-block; padding: 2px 6px; border-radius: 12px; font-size: 11px;
+      font-weight: bold; margin-left: 8px;
+    }}
+    .status-resolved {{ background: rgba(3, 218, 198, 0.2); color: var(--success); }}
+    .status-review {{ background: rgba(207, 102, 121, 0.2); color: var(--error); }}
+    
+    .card {{ background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 24px; }}
+    .card h3 {{ margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 8px; }}
+    
+    .grid-2 {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }}
+    .grid-3 {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }}
+    
+    table {{ width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 13px; }}
+    th, td {{ border: 1px solid var(--border); padding: 8px; text-align: left; }}
+    th {{ background: #2c2c2c; }}
+    
+    .img-box {{ background: #000; text-align: center; border: 1px solid var(--border); padding: 8px; border-radius: 4px; }}
+    .img-box img {{ max-width: 100%; height: auto; image-rendering: pixelated; }}
+    
+    .metrics-list {{ list-style: none; padding: 0; margin: 0; font-size: 13px; }}
+    .metrics-list li {{ display: flex; justify-content: space-between; margin-bottom: 4px; border-bottom: 1px dashed #444; }}
   </style>
 </head>
 <body>
-  <h1>Matera Pixel Probe</h1>
-  <p><a href="page_summary.md">page_summary.md</a> · <a href="roi_trace.csv">roi_trace.csv</a></p>
-  <h2>Page Overlay</h2>
-  <img class="page" src="page_overlay_all_rois.png">
-  <h2>ROI Traces</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Question</th><th>Option</th><th>Prediction</th><th>Method</th>
-        <th>Score</th><th>Radial Deg</th><th>Routing</th><th>Reason</th>
-        <th>Trace</th><th>Overlay</th>
-      </tr>
-    </thead>
-    <tbody>
-      {''.join(rows)}
-    </tbody>
-  </table>
+  <div id="sidebar">
+    <h2>Pixel Probe</h2>
+    <div style="font-size: 12px; color: #888; margin-bottom: 16px;">
+      PDF: {report.source_pdf} (Page {report.page_number})<br>
+      Align Score: {report.alignment_score:.3f}
+    </div>
+    <div id="q-list"></div>
+  </div>
+  <div id="main">
+    <div id="content">
+      <h2 style="color:#888;">Select a question to view details.</h2>
+      <a href="page_summary.md">page_summary.md</a> | <a href="roi_trace.csv">roi_trace.csv</a>
+    </div>
+  </div>
+
+  <script>
+    const REPORT_DATA = {json.dumps(report.as_dict())};
+    
+    function init() {{
+      const qList = document.getElementById("q-list");
+      
+      // Group traces by question
+      const tracesByQ = {{}};
+      REPORT_DATA.traces.forEach(t => {{
+        if(!tracesByQ[t.question_id]) tracesByQ[t.question_id] = [];
+        tracesByQ[t.question_id].push(t);
+      }});
+      
+      const sortedQs = Object.keys(tracesByQ).sort();
+      
+      sortedQs.forEach(qId => {{
+        const div = document.createElement("div");
+        div.className = "q-item";
+        
+        let needsReview = tracesByQ[qId].some(t => t.routing_status === "needs_review");
+        let badgeClass = needsReview ? "status-review" : "status-resolved";
+        let badgeText = needsReview ? "Review" : "Resolved";
+        
+        div.innerHTML = `<strong>${{qId}}</strong> <span class="status-badge ${{badgeClass}}">${{badgeText}}</span>`;
+        div.onclick = () => {{
+          document.querySelectorAll(".q-item").forEach(el => el.classList.remove("active"));
+          div.classList.add("active");
+          renderQuestion(qId, tracesByQ[qId], REPORT_DATA.global_topology[qId]);
+        }};
+        qList.appendChild(div);
+      }});
+    }}
+    
+    function renderQuestion(qId, traces, globalTopo) {{
+      const content = document.getElementById("content");
+      let html = `<h2>Question: ${{qId}}</h2>`;
+      
+      // Global Topology Card
+      if (globalTopo && globalTopo.ran) {{
+        html += `<div class="card">
+          <h3>Global Topology Analysis</h3>
+          <div class="grid-2">
+            <div>
+              <ul class="metrics-list">
+                <li><span>Contours found:</span> <span>${{globalTopo.contours.length}}</span></li>
+                <li><span>Clusters:</span> <span>${{globalTopo.clusters.length}}</span></li>
+                <li><span>Global Marked:</span> <span>${{globalTopo.global_marked.length > 0 ? globalTopo.global_marked.join(', ') : 'None'}}</span></li>
+              </ul>
+            </div>
+            <div class="img-box">
+              ${{globalTopo.artifacts && globalTopo.artifacts.global ? `<img src="${{globalTopo.artifacts.global}}">` : `<i>No global artifact</i>`}}
+            </div>
+          </div>
+        </div>`;
+      }} else if (globalTopo) {{
+        html += `<div class="card"><h3>Global Topology Analysis</h3><p>Skipped: ${{globalTopo.skip_reason}}</p></div>`;
+      }}
+      
+      // Local Options Cards
+      html += `<div class="card"><h3>Local Options Analysis</h3><div class="grid-3">`;
+      traces.forEach(t => {{
+        let art = globalTopo && globalTopo.artifacts ? globalTopo.artifacts["option_"+t.option_id] : null;
+        let imgHtml = art ? `<div class="img-box"><img src="${{art}}"></div>` : "";
+        
+        let suspHtml = t.suspicion_notes && t.suspicion_notes.length ? `<div style="color:var(--warn);font-size:12px;margin-top:8px;">Suspicion:<ul><li>${{t.suspicion_notes.join('</li><li>')}}</li></ul></div>` : "";
+        
+        html += `
+          <div style="border: 1px solid #444; border-radius: 4px; padding: 12px; background: #222;">
+            <div style="font-weight:bold;font-size:16px;margin-bottom:8px;">Option: ${{t.option_id}}</div>
+            ${{imgHtml}}
+            <div style="margin-top: 12px;">
+              <ul class="metrics-list">
+                <li><span>Prediction:</span> <strong>${{t.prediction}}</strong></li>
+                <li><span>Score:</span> <span>${{t.score.toFixed(3)}}</span></li>
+                <li><span>Method:</span> <span>${{t.method}}</span></li>
+                <li><span>Routing:</span> <span class="${{t.routing_status === 'needs_review' ? 'status-review' : 'status-resolved'}} status-badge" style="margin:0">${{t.routing_status || 'N/A'}}</span></li>
+              </ul>
+              ${{suspHtml}}
+            </div>
+          </div>
+        `;
+      }});
+      html += `</div></div>`;
+      
+      // Decision Path
+      if (traces.length > 0) {{
+         let traceHtml = traces.map(t => `<div><strong>${{t.option_id}}:</strong> ${{(t.decision_path||[]).join(" &rarr; ")}}</div>`).join("");
+         html += `<div class="card"><h3>Decision Paths</h3>${{traceHtml}}</div>`;
+      }}
+      
+      content.innerHTML = html;
+    }}
+    
+    document.addEventListener("DOMContentLoaded", init);
+  </script>
 </body>
 </html>
 """
     (out_dir / "index.html").write_text(html_text, encoding="utf-8")
-
 
 def run_pixel_probe(
     *,
