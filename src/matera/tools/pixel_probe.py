@@ -1715,3 +1715,7 @@ def generate_question_artifacts(
             artifacts[f"option_{roi.option_id}"] = opt_filename
             
     return artifacts
+
+if __name__ == '__main__':
+    import sys
+    sys.exit(main())
