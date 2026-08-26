@@ -1021,6 +1021,24 @@ def run_pixel_probe(
             aligned_page.image, median_ref_bgr, g_trace, q_traces, page_dir
         )
         g_trace.artifacts = q_artifacts
+        
+        # Capture global ink pipeline
+        g_metrics, g_ink_artifacts = _capture_global_ink_pipeline(
+            aligned_page.image, median_ref_bgr, g_trace, page_dir / _safe_name(q_id)
+        )
+        g_trace.ink_pipeline_metrics = g_metrics
+        g_trace.ink_pipeline_artifacts = g_ink_artifacts
+
+    for trace in traces:
+        roi = next(r for r in scaled_rois if r.question_id == trace.question_id and r.option_id == trace.option_id)
+        roi_dir = page_dir / _safe_name(trace.question_id) / _safe_name(trace.option_id)
+        
+        # Capture local ink pipeline
+        l_metrics, l_artifacts = _capture_local_ink_pipeline(
+            aligned_page.image, reference_image, roi, trace, roi_dir
+        )
+        trace.local_ink_pipeline_metrics = l_metrics
+        trace.local_ink_pipeline_artifacts = l_artifacts
 
     overlay = _draw_page_overlay(aligned_page.image, traces)
     _write_image(page_dir / "page_overlay_all_rois.png", overlay)
