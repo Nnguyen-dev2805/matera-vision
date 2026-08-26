@@ -82,6 +82,7 @@ class GlobalTopologyTrace:
     artifacts: dict[str, str]
     ink_pipeline_metrics: dict[str, Any] = dataclasses.field(default_factory=dict)
     ink_pipeline_artifacts: dict[str, str] = dataclasses.field(default_factory=dict)
+    crop_expansion: dict[str, Any] | None = None
 
 @dataclasses.dataclass
 class RoiStageTrace:
@@ -860,6 +861,13 @@ def _write_index_html(out_dir: Path, report: PixelProbeReport) -> None:
       
       // Global Topology Card
       if (globalTopo && globalTopo.ran) {{
+        let cropExpHtml = '';
+        if (globalTopo.crop_expansion) {{
+            let exp = globalTopo.crop_expansion;
+            cropExpHtml = `<li><span>Crop Expanded:</span> <span>${{exp.expanded}} (${{exp.stop_reason}})</span></li>
+                           <li><span>Final Pads:</span> <span>${{JSON.stringify(exp.final_pads)}}</span></li>`;
+        }}
+        
         html += `<div class="card">
           <h3>Global Topology Analysis</h3>
           <div class="grid-2">
@@ -868,6 +876,7 @@ def _write_index_html(out_dir: Path, report: PixelProbeReport) -> None:
                 <li><span>Contours found:</span> <span>${{globalTopo.contours.length}}</span></li>
                 <li><span>Clusters:</span> <span>${{globalTopo.clusters.length}}</span></li>
                 <li><span>Global Marked:</span> <span>${{globalTopo.global_marked.length > 0 ? globalTopo.global_marked.join(', ') : 'None'}}</span></li>
+                ${{cropExpHtml}}
               </ul>
             </div>
             <div class="img-box">
@@ -1225,16 +1234,20 @@ def trace_global_topology(
             artifacts={}
         )
         
-    min_x = min(r.bbox.x for r in rois)
-    min_y = min(r.bbox.y for r in rois)
-    max_x = max(r.bbox.x + r.bbox.w for r in rois)
-    max_y = max(r.bbox.y + r.bbox.h for r in rois)
+    from matera.vision.adaptive_crop import compute_adaptive_global_crop
     
-    crop_x1 = max(0, min_x - GLOBAL_PAD)
-    crop_y1 = max(0, min_y - GLOBAL_PAD)
-    crop_x2 = min(aligned_image_rgb.width, max_x + GLOBAL_PAD)
-    crop_y2 = min(aligned_image_rgb.height, max_y + GLOBAL_PAD)
+    crop_result = compute_adaptive_global_crop(aligned_image_rgb, median_ref_bgr, rois)
+    crop = crop_result.crop
+    crop_x1, crop_y1, crop_x2, crop_y2 = crop["x1"], crop["y1"], crop["x2"], crop["y2"]
     group_crop = {"x1": crop_x1, "y1": crop_y1, "x2": crop_x2, "y2": crop_y2}
+    
+    crop_expansion = {
+        "initial_pad": 20,
+        "final_pads": crop_result.pads,
+        "expanded": crop_result.expanded,
+        "stop_reason": crop_result.stop_reason,
+        "iterations": [dataclasses.asdict(i) for i in crop_result.iterations]
+    }
     
     crop_img = aligned_image_rgb.crop((crop_x1, crop_y1, crop_x2, crop_y2))
     target_bgr = cv2.cvtColor(np.array(crop_img), cv2.COLOR_RGB2BGR)
@@ -1299,7 +1312,8 @@ def trace_global_topology(
             contours=contour_traces,
             clusters=[],
             global_marked=[],
-            artifacts={}
+            artifacts={},
+            crop_expansion=crop_expansion
         )
         
     uf = UnionFind(n)
@@ -1371,7 +1385,8 @@ def trace_global_topology(
         contours=contour_traces,
         clusters=cluster_traces,
         global_marked=global_marked,
-        artifacts={}
+        artifacts={},
+        crop_expansion=crop_expansion
     )
 
 
