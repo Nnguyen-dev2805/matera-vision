@@ -126,3 +126,22 @@ def test_evidence_to_mark_scores():
     
     assert scores[2].option_id == "o3"
     assert scores[2].score == 0.5
+
+def test_local_option_evidence():
+    import cv2
+    from matera.vision.evidence import compute_local_option_evidence, LocalOptionEvidence
+    
+    # Create a dummy mask (100x100) with a filled circle
+    mask_raw = np.zeros((100, 100), dtype=np.uint8)
+    cv2.circle(mask_raw, (50, 50), 20, 255, -1)
+    
+    # Dummy text bbox
+    text_bbox = (40, 40, 20, 20)
+    crop_coords = (0, 0, 100, 100)
+    
+    evidence = compute_local_option_evidence(mask_raw, text_bbox, crop_coords, outer_radius=32)
+    
+    assert isinstance(evidence, LocalOptionEvidence)
+    assert evidence.radial_degrees_covered > 0
+    assert evidence.radial_active_bin_count > 0
+    assert evidence.radial_ink_pixels > 0
