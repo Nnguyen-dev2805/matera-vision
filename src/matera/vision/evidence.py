@@ -432,3 +432,178 @@ def compute_global_topology_evidence(aligned_image_rgb, median_ref_bgr, rois) ->
         clusters=tuple(clusters_ev),
         global_marked=frozenset(global_marked)
     )
+
+def extract_page_evidence(
+    aligned_page,
+    profile,
+    layout,
+    reference_image,
+    debug_dir: str | None = None,
+    debug_full_mask = None,
+) -> PageMarkEvidence:
+    import cv2
+    import numpy as np
+    import pathlib
+    from collections import defaultdict
+    import dataclasses
+    
+    from matera.vision.mark import (
+        LOCAL_PAD, OUTER_RADIUS, NUM_BINS, MIN_INK_PER_BIN, DEGREES_PER_BIN,
+        MARKED_THRESHOLD_DEG, BLANK_THRESHOLD_DEG,
+        get_local_roi_crops, get_text_bounding_box, process_roi_hsv_ai, get_local_roi_crops_hsv
+    )
+    
+    median_ref_bgr = cv2.cvtColor(np.array(reference_image), cv2.COLOR_RGB2BGR)
+    orig_bgr = cv2.cvtColor(np.array(aligned_page.image), cv2.COLOR_RGB2BGR)
+    
+    if debug_full_mask is None:
+        debug_full_mask = np.zeros_like(orig_bgr)
+        
+    strategy_map = {q.question_id: q.mark_strategy for q in profile.questions}
+    
+    scale_x = orig_bgr.shape[1] / layout.width_px
+    scale_y = orig_bgr.shape[0] / layout.height_px
+    
+    scaled_rois = []
+    for roi in layout.rois:
+        new_bbox = dataclasses.replace(
+            roi.bbox,
+            x=int(roi.bbox.x * scale_x),
+            y=int(roi.bbox.y * scale_y),
+            w=int(roi.bbox.w * scale_x),
+            h=int(roi.bbox.h * scale_y)
+        )
+        scaled_rois.append(dataclasses.replace(roi, bbox=new_bbox))
+        
+    rois_by_q = defaultdict(list)
+    for roi in scaled_rois:
+        rois_by_q[roi.question_id].append(roi)
+        
+    global_topology_evidence_dict = {}
+    for q_id, rois in rois_by_q.items():
+        if "Q14" not in q_id:
+            gt_evidence = compute_global_topology_evidence(aligned_page.image, median_ref_bgr, rois)
+            global_topology_evidence_dict[q_id] = gt_evidence
+            
+            # Debug full mask update
+            if gt_evidence.ran and gt_evidence.skip_reason is None:
+                crop_x1 = gt_evidence.crop["x1"]
+                crop_y1 = gt_evidence.crop["y1"]
+                for cl in gt_evidence.clusters:
+                    if cl.hull_area > 1000 and cl.solidity < 0.4:
+                        hull_pts = np.array([[[pt[0] + crop_x1, pt[1] + crop_y1]] for pt in cl.hull_points], dtype=np.int32)
+                        cv2.drawContours(debug_full_mask, [hull_pts], 0, (0, 255, 255), 2)
+        else:
+            global_topology_evidence_dict[q_id] = None
+            
+    question_evidences = []
+    
+    for q_id, rois in rois_by_q.items():
+        opt_evidences = []
+        roi_evidences = []
+        gt_evidence = global_topology_evidence_dict[q_id]
+        global_marked_set = gt_evidence.global_marked if gt_evidence else set()
+        
+        for roi in rois:
+            strategy = roi.mark_strategy_override or strategy_map.get(roi.question_id)
+            opt_id = roi.option_id
+            
+            roi_evidences.append(RoiEvidence(
+                question_id=q_id,
+                option_id=opt_id,
+                bbox={"x": roi.bbox.x, "y": roi.bbox.y, "w": roi.bbox.w, "h": roi.bbox.h}, # Wait, the scaled bbox
+                scaled_bbox={"x": roi.bbox.x, "y": roi.bbox.y, "w": roi.bbox.w, "h": roi.bbox.h},
+                strategy=strategy
+            ))
+            
+            pred = "AMBIGUOUS"
+            method = "UNKNOWN"
+            local_evidence = None
+            hsv_evidence = None
+            
+            if "Q14" not in q_id:
+                if opt_id in global_marked_set:
+                    pred = "MARKED"
+                    method = "GLOBAL_HULL"
+                else:
+                    target_bgr, mask_raw, crop_coords, ref_gray = get_local_roi_crops(aligned_page.image, median_ref_bgr, roi.bbox, LOCAL_PAD)
+                    text_bbox = get_text_bounding_box(ref_gray)
+                    
+                    local_evidence = compute_local_option_evidence(mask_raw, text_bbox, crop_coords, OUTER_RADIUS, NUM_BINS, MIN_INK_PER_BIN)
+                    
+                    if local_evidence.radial_degrees_covered >= MARKED_THRESHOLD_DEG:
+                        pred = "MARKED"
+                        method = "LOCAL_RADIAL"
+                    elif local_evidence.radial_degrees_covered <= BLANK_THRESHOLD_DEG:
+                        pred = "BLANK"
+                        method = "LOCAL_RADIAL"
+                    else:
+                        pred, method = process_roi_hsv_ai(aligned_page, median_ref_bgr, roi, "FALLBACK")
+                        hsv_evidence = HsvFallbackEvidence(
+                            method_prefix="FALLBACK",
+                            hsv_ink_pixels=None,
+                            classifier_probability=None,
+                            classifier_available=True,
+                            decision=pred,
+                            method=method
+                        )
+            else:
+                pred, method = process_roi_hsv_ai(aligned_page, median_ref_bgr, roi, "HSV_AI")
+                hsv_evidence = HsvFallbackEvidence(
+                    method_prefix="HSV_AI",
+                    hsv_ink_pixels=None,
+                    classifier_probability=None,
+                    classifier_available=True,
+                    decision=pred,
+                    method=method
+                )
+                
+            score_val = 1.0 if pred == "MARKED" else 0.0 if pred == "BLANK" else 0.5
+            
+            opt_evidences.append(OptionMarkEvidence(
+                question_id=q_id,
+                option_id=opt_id,
+                strategy=strategy,
+                legacy_prediction=pred,
+                legacy_method=method,
+                legacy_score=score_val,
+                selected_by_global=(opt_id in global_marked_set),
+                local=local_evidence,
+                hsv_fallback=hsv_evidence,
+                suspicion_notes=()
+            ))
+            
+        question_evidences.append(QuestionMarkEvidence(
+            question_id=q_id,
+            strategy=strategy_map.get(q_id, "unknown"),
+            response_type="single",
+            rois=tuple(roi_evidences),
+            global_topology=gt_evidence,
+            option_evidence=tuple(opt_evidences)
+        ))
+        
+    return PageMarkEvidence(
+        page_number=aligned_page.page_number,
+        form_id=aligned_page.profile_form_id,
+        form_version=aligned_page.profile_version,
+        alignment=AlignmentEvidence(
+            alignment_score=aligned_page.alignment_score,
+            warp_matrix=tuple(tuple(r) for r in aligned_page.warp_matrix.tolist()) if isinstance(aligned_page.warp_matrix, np.ndarray) else (),
+            image_size=(orig_bgr.shape[1], orig_bgr.shape[0]),
+            layout_size=(layout.width_px, layout.height_px),
+            scale_x=scale_x,
+            scale_y=scale_y
+        ),
+        reference=ReferenceEvidence(width=0, height=0, dpi=aligned_page.reference_dpi),
+        questions=tuple(question_evidences),
+        thresholds=MarkThresholdEvidence(
+            marked_threshold_deg=MARKED_THRESHOLD_DEG,
+            blank_threshold_deg=BLANK_THRESHOLD_DEG,
+            routing_low_threshold=0.2,
+            routing_high_threshold=0.8,
+            local_pad_px=LOCAL_PAD,
+            outer_radius_px=OUTER_RADIUS,
+            diff_threshold=0,
+            global_pad_px=0
+        )
+    )
