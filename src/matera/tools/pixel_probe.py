@@ -1,9 +1,9 @@
+# ruff: noqa: E501
 from __future__ import annotations
 
 import argparse
 import csv
 import dataclasses
-import html
 import json
 import re
 from collections import defaultdict
@@ -19,34 +19,32 @@ from matera.core.layout import BoundingBox, PageLayout, RoiDef, load_layout_prof
 from matera.core.profile import FormProfile, load_semantic_profile
 from matera.data.extract import extract_pages
 from matera.vision.alignment import align_page
-from matera.vision.evidence import extract_mark_evidence, evidence_to_json_dict
-from matera.vision.contracts import AlignmentConfig, MarkScore, RoutingConfig
+from matera.vision.contracts import AlignmentConfig, RoutingConfig
+from matera.vision.evidence import evidence_to_json_dict, extract_mark_evidence
 from matera.vision.mark import (
     BLANK_THRESHOLD_DEG,
     CHECKBOX_INNER_MARGIN,
+    CLOSE_ITERATIONS,
+    CLOSE_KERNEL_SIZE,
     DEGREES_PER_BIN,
+    DIFF_THRESHOLD,
+    EXTREMES_REJECT_THRESHOLD,
+    GAUSS_KERNEL,
+    LOCAL_CLOSE_ITERS,
+    LOCAL_CLOSE_KERNEL,
     LOCAL_PAD,
     MARKED_THRESHOLD_DEG,
+    MERGE_THRESHOLD,
     MIN_INK_PER_BIN,
     NUM_BINS,
     OUTER_RADIUS,
+    UnionFind,
+    get_horizontal_extremes,
     get_local_roi_crops,
     get_local_roi_crops_hsv,
     get_text_bounding_box,
-    run_v11_global_topology,
-    GLOBAL_PAD,
-    MERGE_THRESHOLD,
-    EXTREMES_REJECT_THRESHOLD,
-    GAUSS_KERNEL,
-    CLOSE_KERNEL_SIZE,
-    CLOSE_ITERATIONS,
-    LOCAL_CLOSE_KERNEL,
-    LOCAL_CLOSE_ITERS,
-    DIFF_THRESHOLD,
-
-    UnionFind,
     min_contour_distance,
-    get_horizontal_extremes,
+    run_v11_global_topology,
 )
 
 
@@ -57,6 +55,7 @@ class ContourTrace:
     bbox: list[int]
     status: str
     reject_reason: str | None
+
 
 @dataclasses.dataclass
 class ClusterTrace:
@@ -69,6 +68,7 @@ class ClusterTrace:
     qualifies_global: bool
     inside_options: list[str]
     rejection_reasons: list[str]
+
 
 @dataclasses.dataclass
 class GlobalTopologyTrace:
@@ -85,6 +85,7 @@ class GlobalTopologyTrace:
     ink_pipeline_artifacts: dict[str, str] = dataclasses.field(default_factory=dict)
     crop_expansion: dict[str, Any] | None = None
 
+
 @dataclasses.dataclass
 class RoiStageTrace:
     name: str
@@ -93,9 +94,11 @@ class RoiStageTrace:
     metrics: dict[str, Any]
     artifacts: list[str]
 
+
 @dataclasses.dataclass
 class QuestionTrace:
     question_id: str
+
 
 @dataclasses.dataclass
 class PixelProbeReport:
@@ -414,7 +417,7 @@ def analyze_roi_pixels(
         suspicion_notes.append(
             "Diff mask has ink-like pixels, but radial analysis removed all of them."
         )
-    if hsv_ink_pixels is not None and hsv_ink_pixels < 20 and int(np.sum(diff_mask > 0)) >= 20:
+    if hsv_ink_pixels is not None and hsv_ink_pixels < 20 and int(np.sum(diff_mask > 0)) >= 20:  # noqa: E501
         suspicion_notes.append(
             "Diff mask sees pixels, but HSV safe mask is below the blank threshold."
         )
@@ -471,8 +474,7 @@ def build_routing_traces(
     config: RoutingConfig,
 ) -> dict[tuple[str, str], dict[str, Any]]:
     score_by_key = {
-        (str(t["question_id"]), str(t["option_id"])): float(t["score"])
-        for t in roi_traces
+        (str(t["question_id"]), str(t["option_id"])): float(t["score"]) for t in roi_traces
     }
     result: dict[tuple[str, str], dict[str, Any]] = {}
 
@@ -623,6 +625,7 @@ def _trace_row(trace: RoiPixelTrace) -> dict[str, Any]:
         "suspicion_notes": " | ".join(trace.suspicion_notes),
     }
 
+
 def _write_roi_artifacts(out_dir: Path, trace: RoiPixelTrace, masks: dict[str, Any]) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     _write_image(out_dir / "01_aligned_roi.png", masks["aligned_roi"])
@@ -714,14 +717,18 @@ def _write_summary(out_dir: Path, report: PixelProbeReport) -> None:
     ]
     for q_id, gt in report.global_topology.items():
         if gt.ran:
-            lines.append(f"- **{q_id}**: {len(gt.contours)} valid contours, {len(gt.clusters)} clusters. Global marked: {', '.join(gt.global_marked) if gt.global_marked else 'None'}")
+            lines.append(
+                f"- **{q_id}**: {len(gt.contours)} valid contours, {len(gt.clusters)} clusters. Global marked: {', '.join(gt.global_marked) if gt.global_marked else 'None'}"
+            )
         else:
             lines.append(f"- **{q_id}**: Skipped ({gt.skip_reason})")
-            
-    lines.extend([
-        "",
-        "## Needs Review",
-    ])
+
+    lines.extend(
+        [
+            "",
+            "## Needs Review",
+        ]
+    )
     if review:
         for t in review:
             lines.append(f"- `{t.question_id}/{t.option_id}`: {t.routing_reason}")
@@ -744,6 +751,7 @@ def _write_summary(out_dir: Path, report: PixelProbeReport) -> None:
         )
 
     (out_dir / "page_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
 
 def _write_index_html(out_dir: Path, report: PixelProbeReport) -> None:
     html_text = f"""<!doctype html>
@@ -1047,6 +1055,7 @@ def _write_index_html(out_dir: Path, report: PixelProbeReport) -> None:
 """
     (out_dir / "index.html").write_text(html_text, encoding="utf-8")
 
+
 def run_pixel_probe(
     *,
     pdf_path: Path,
@@ -1118,7 +1127,7 @@ def run_pixel_probe(
         masks_by_key[(trace.question_id, trace.option_id)] = masks
 
     global_topology_traces = {}
-    
+
     # Trace global topology per question for explainability UI
     for q_id, rois in rois_by_q.items():
         if "Q14" in q_id:
@@ -1147,7 +1156,7 @@ def run_pixel_probe(
             trace.routing_reason = routing["review_reason"]
         roi_dir = page_dir / _safe_name(trace.question_id) / _safe_name(trace.option_id)
         _write_roi_artifacts(roi_dir, trace, masks_by_key[(trace.question_id, trace.option_id)])
-        
+
     for q_id, g_trace in global_topology_traces.items():
         q_traces = [t for t in traces if t.question_id == q_id]
         if not q_traces:
@@ -1156,7 +1165,7 @@ def run_pixel_probe(
             aligned_page.image, median_ref_bgr, g_trace, q_traces, page_dir
         )
         g_trace.artifacts = q_artifacts
-        
+
         # Capture global ink pipeline
         g_metrics, g_ink_artifacts = _capture_global_ink_pipeline(
             aligned_page.image, median_ref_bgr, g_trace, page_dir / _safe_name(q_id)
@@ -1165,9 +1174,13 @@ def run_pixel_probe(
         g_trace.ink_pipeline_artifacts = g_ink_artifacts
 
     for trace in traces:
-        roi = next(r for r in scaled_rois if r.question_id == trace.question_id and r.option_id == trace.option_id)
+        roi = next(
+            r
+            for r in scaled_rois
+            if r.question_id == trace.question_id and r.option_id == trace.option_id
+        )
         roi_dir = page_dir / _safe_name(trace.question_id) / _safe_name(trace.option_id)
-        
+
         # Capture local ink pipeline
         l_metrics, l_artifacts = _capture_local_ink_pipeline(
             aligned_page.image, reference_image, roi, trace, roi_dir
@@ -1178,19 +1191,15 @@ def run_pixel_probe(
     overlay = _draw_page_overlay(aligned_page.image, traces)
     _write_image(page_dir / "page_overlay_all_rois.png", overlay)
 
-    try:
-        raw_evidence = extract_mark_evidence(
-            aligned_page=aligned_page,
-            profile=semantic_profile,
-            layout=layout,
-            reference_image=reference_image,
-            debug_dir=str(page_dir),
-            debug_full_mask=None,
-        )
-        evidence_dict = evidence_to_json_dict(raw_evidence)
-    except Exception as e:
-        print(f"Warning: Failed to extract evidence layer: {e}")
-        evidence_dict = None
+    raw_evidence = extract_mark_evidence(
+        aligned_page=aligned_page,
+        profile=semantic_profile,
+        layout=layout,
+        reference_image=reference_image,
+        debug_dir=str(page_dir),
+        debug_full_mask=None,
+    )
+    evidence_dict = evidence_to_json_dict(raw_evidence)
 
     report = PixelProbeReport(
         report_version=2,
@@ -1198,13 +1207,20 @@ def run_pixel_probe(
         page_number=page_number,
         alignment_score=aligned_page.alignment_score,
         warp_matrix=np.asarray(aligned_page.warp_matrix).tolist(),
-        filters={"question": question, "option": option, "routing_evaluated": not bool(question or option)},
-        thresholds={"routing_low": routing_config.low_threshold, "routing_high": routing_config.high_threshold},
-        questions=[], 
+        filters={
+            "question": question,
+            "option": option,
+            "routing_evaluated": not bool(question or option),
+        },
+        thresholds={
+            "routing_low": routing_config.low_threshold,
+            "routing_high": routing_config.high_threshold,
+        },
+        questions=[],
         global_topology=global_topology_traces,
         traces=traces,
         artifacts={"page_overlay": "page_overlay_all_rois.png"},
-        evidence=evidence_dict
+        evidence=evidence_dict,
     )
 
     with open(page_dir / "report.json", "w", encoding="utf-8") as f:
@@ -1219,6 +1235,7 @@ def run_pixel_probe(
     _write_summary(page_dir, report)
     _write_index_html(page_dir, report)
     return page_dir
+
 
 def _default_debug_pdf() -> Path:
     debug_dir = Path("data/test/debug")
@@ -1266,10 +1283,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def trace_global_topology(
-    aligned_image_rgb: Image.Image,
-    median_ref_bgr: np.ndarray,
-    rois: list[RoiDef],
-    question_id: str
+    aligned_image_rgb: Image.Image, median_ref_bgr: np.ndarray, rois: list[RoiDef], question_id: str
 ) -> GlobalTopologyTrace:
     if len(rois) <= 1:
         return GlobalTopologyTrace(
@@ -1281,56 +1295,56 @@ def trace_global_topology(
             contours=[],
             clusters=[],
             global_marked=[],
-            artifacts={}
+            artifacts={},
         )
-        
+
     from matera.vision.adaptive_crop import compute_adaptive_global_crop
-    
+
     crop_result = compute_adaptive_global_crop(aligned_image_rgb, median_ref_bgr, rois)
     crop = crop_result.crop
     crop_x1, crop_y1, crop_x2, crop_y2 = crop["x1"], crop["y1"], crop["x2"], crop["y2"]
     group_crop = {"x1": crop_x1, "y1": crop_y1, "x2": crop_x2, "y2": crop_y2}
-    
+
     crop_expansion = {
         "initial_pad": 20,
         "final_pads": crop_result.pads,
         "expanded": crop_result.expanded,
         "stop_reason": crop_result.stop_reason,
-        "iterations": [dataclasses.asdict(i) for i in crop_result.iterations]
+        "iterations": [dataclasses.asdict(i) for i in crop_result.iterations],
     }
-    
+
     crop_img = aligned_image_rgb.crop((crop_x1, crop_y1, crop_x2, crop_y2))
     target_bgr = cv2.cvtColor(np.array(crop_img), cv2.COLOR_RGB2BGR)
     ref_crop = median_ref_bgr[crop_y1:crop_y2, crop_x1:crop_x2]
-    
+
     target_gray = cv2.cvtColor(target_bgr, cv2.COLOR_BGR2GRAY)
     ref_gray = cv2.cvtColor(ref_crop, cv2.COLOR_BGR2GRAY)
-    
+
     diff = cv2.absdiff(ref_gray, target_gray)
     blurred = cv2.GaussianBlur(diff, (3, 3), 0)
     _, mask_raw = cv2.threshold(blurred, 30, 255, cv2.THRESH_BINARY)
-    
+
     h, w = mask_raw.shape
     mask_raw[:15, :] = 0
-    mask_raw[h-15:, :] = 0
-    
+    mask_raw[h - 15 :, :] = 0
+
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     mask_closed = cv2.morphologyEx(mask_raw, cv2.MORPH_CLOSE, kernel, iterations=2)
     contours, _ = cv2.findContours(mask_closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
+
     option_centers = []
     for r in rois:
         cx = (r.bbox.x + r.bbox.w / 2.0) - crop_x1
         cy = (r.bbox.y + r.bbox.h / 2.0) - crop_y1
         option_centers.append({"option_id": r.option_id, "x": cx, "y": cy})
-        
+
     valid_cnts = []
     contour_traces = []
     for idx, cnt in enumerate(contours):
         area = cv2.contourArea(cnt)
         x, y, cw, ch = cv2.boundingRect(cnt)
         bbox = [x, y, cw, ch]
-        
+
         status = "valid"
         reject_reason = None
         if area <= 30:
@@ -1339,18 +1353,20 @@ def trace_global_topology(
         elif (ch > 100 and cw < 25) or (cw > 100 and ch < 25):
             status = "rejected"
             reject_reason = "Extreme aspect ratio"
-            
-        contour_traces.append(ContourTrace(
-            contour_id=idx,
-            area=float(area),
-            bbox=bbox,
-            status=status,
-            reject_reason=reject_reason
-        ))
-        
+
+        contour_traces.append(
+            ContourTrace(
+                contour_id=idx,
+                area=float(area),
+                bbox=bbox,
+                status=status,
+                reject_reason=reject_reason,
+            )
+        )
+
         if status == "valid":
             valid_cnts.append((idx, cnt))
-            
+
     n = len(valid_cnts)
     if n == 0:
         return GlobalTopologyTrace(
@@ -1363,11 +1379,11 @@ def trace_global_topology(
             clusters=[],
             global_marked=[],
             artifacts={},
-            crop_expansion=crop_expansion
+            crop_expansion=crop_expansion,
         )
-        
+
     uf = UnionFind(n)
-    
+
     for i in range(n):
         for j in range(i + 1, n):
             dist = min_contour_distance(valid_cnts[i][1], valid_cnts[j][1])
@@ -1376,56 +1392,58 @@ def trace_global_topology(
                 l2, r2 = get_horizontal_extremes(valid_cnts[j][1])
                 dist_left = np.linalg.norm(l1 - l2)
                 dist_right = np.linalg.norm(r1 - r2)
-                
+
                 if dist_left > EXTREMES_REJECT_THRESHOLD and dist_right > EXTREMES_REJECT_THRESHOLD:
                     pass
                 else:
                     uf.union(i, j)
-                    
+
     clusters_dict = defaultdict(list)
     for i in range(n):
         clusters_dict[uf.find(i)].append(valid_cnts[i])
-        
+
     cluster_traces = []
     global_marked = []
-    
+
     for root, cnt_list in clusters_dict.items():
         combined_points = np.vstack([c[1] for c in cnt_list])
         total_area = sum([cv2.contourArea(c[1]) for c in cnt_list])
-        
+
         hull = cv2.convexHull(combined_points)
         hull_area = cv2.contourArea(hull)
         hx, hy, hw, hh = cv2.boundingRect(hull)
-        
+
         rejection_reasons = []
         qualifies_global = False
         inside_options = []
-        
+
         if hull_area > 1000:
             solidity = total_area / float(hull_area) if hull_area > 0 else 1.0
             if solidity < 0.4:
                 qualifies_global = True
                 for opt in option_centers:
-                    if cv2.pointPolygonTest(hull, (opt['x'], opt['y']), False) >= 0:
-                        global_marked.append(opt['option_id'])
-                        inside_options.append(opt['option_id'])
+                    if cv2.pointPolygonTest(hull, (opt["x"], opt["y"]), False) >= 0:
+                        global_marked.append(opt["option_id"])
+                        inside_options.append(opt["option_id"])
             else:
                 rejection_reasons.append(f"Solidity {solidity:.2f} >= 0.4")
         else:
             rejection_reasons.append(f"Hull area {hull_area} <= 1000")
-            
-        cluster_traces.append(ClusterTrace(
-            cluster_id=root,
-            contour_ids=[c[0] for c in cnt_list],
-            total_area=float(total_area),
-            hull_area=float(hull_area),
-            solidity=float(total_area / hull_area) if hull_area > 0 else 1.0,
-            bbox=[hx, hy, hw, hh],
-            qualifies_global=qualifies_global,
-            inside_options=inside_options,
-            rejection_reasons=rejection_reasons
-        ))
-        
+
+        cluster_traces.append(
+            ClusterTrace(
+                cluster_id=root,
+                contour_ids=[c[0] for c in cnt_list],
+                total_area=float(total_area),
+                hull_area=float(hull_area),
+                solidity=float(total_area / hull_area) if hull_area > 0 else 1.0,
+                bbox=[hx, hy, hw, hh],
+                qualifies_global=qualifies_global,
+                inside_options=inside_options,
+                rejection_reasons=rejection_reasons,
+            )
+        )
+
     return GlobalTopologyTrace(
         question_id=question_id,
         ran=True,
@@ -1436,9 +1454,8 @@ def trace_global_topology(
         clusters=cluster_traces,
         global_marked=global_marked,
         artifacts={},
-        crop_expansion=crop_expansion
+        crop_expansion=crop_expansion,
     )
-
 
 
 def _capture_global_ink_pipeline(
@@ -1455,102 +1472,101 @@ def _capture_global_ink_pipeline(
         return metrics, artifacts
 
     crop = global_trace.group_crop
-    crop_x1, crop_y1 = crop['x1'], crop['y1']
-    crop_x2, crop_y2 = crop['x2'], crop['y2']
+    crop_x1, crop_y1 = crop["x1"], crop["y1"]
+    crop_x2, crop_y2 = crop["x2"], crop["y2"]
 
     # Step 0: Raw Crop
     crop_img = aligned_image_rgb.crop((crop_x1, crop_y1, crop_x2, crop_y2))
     target_bgr = cv2.cvtColor(np.array(crop_img), cv2.COLOR_RGB2BGR)
-    cv2.imwrite(str(out_dir / 'global_step0_raw_crop.png'), target_bgr)
-    artifacts['step0'] = 'global_step0_raw_crop.png'
+    cv2.imwrite(str(out_dir / "global_step0_raw_crop.png"), target_bgr)
+    artifacts["step0"] = "global_step0_raw_crop.png"
 
     # Step 1: Reference Crop
     ref_crop = median_ref_bgr[crop_y1:crop_y2, crop_x1:crop_x2]
-    cv2.imwrite(str(out_dir / 'global_step1_ref_crop.png'), ref_crop)
-    artifacts['step1'] = 'global_step1_ref_crop.png'
+    cv2.imwrite(str(out_dir / "global_step1_ref_crop.png"), ref_crop)
+    artifacts["step1"] = "global_step1_ref_crop.png"
 
     target_gray = cv2.cvtColor(target_bgr, cv2.COLOR_BGR2GRAY)
     ref_gray = cv2.cvtColor(ref_crop, cv2.COLOR_BGR2GRAY)
 
     # Step 2: AbsDiff
     diff = cv2.absdiff(ref_gray, target_gray)
-    metrics['absdiff_nonzero_px'] = int(np.sum(diff > 0))
-    cv2.imwrite(str(out_dir / 'global_step2_absdiff.png'), diff)
-    artifacts['step2'] = 'global_step2_absdiff.png'
+    metrics["absdiff_nonzero_px"] = int(np.sum(diff > 0))
+    cv2.imwrite(str(out_dir / "global_step2_absdiff.png"), diff)
+    artifacts["step2"] = "global_step2_absdiff.png"
 
     # Step 3: Blurred Diff
     blurred = cv2.GaussianBlur(diff, GAUSS_KERNEL, 0)
-    cv2.imwrite(str(out_dir / 'global_step3_blurred.png'), blurred)
-    artifacts['step3'] = 'global_step3_blurred.png'
+    cv2.imwrite(str(out_dir / "global_step3_blurred.png"), blurred)
+    artifacts["step3"] = "global_step3_blurred.png"
 
     # Step 4: Threshold Mask
     _, mask_raw = cv2.threshold(blurred, DIFF_THRESHOLD, 255, cv2.THRESH_BINARY)
     h, w = mask_raw.shape
     mask_raw[:15, :] = 0
-    mask_raw[h-15:, :] = 0
-    metrics['threshold_value'] = DIFF_THRESHOLD
-    metrics['threshold_ink_px'] = int(np.sum(mask_raw > 0))
-    cv2.imwrite(str(out_dir / 'global_step4_threshold.png'), mask_raw)
-    artifacts['step4'] = 'global_step4_threshold.png'
+    mask_raw[h - 15 :, :] = 0
+    metrics["threshold_value"] = DIFF_THRESHOLD
+    metrics["threshold_ink_px"] = int(np.sum(mask_raw > 0))
+    cv2.imwrite(str(out_dir / "global_step4_threshold.png"), mask_raw)
+    artifacts["step4"] = "global_step4_threshold.png"
 
     # Step 5: Closed Mask
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (CLOSE_KERNEL_SIZE, CLOSE_KERNEL_SIZE))
     mask_closed = cv2.morphologyEx(mask_raw, cv2.MORPH_CLOSE, kernel, iterations=CLOSE_ITERATIONS)
-    metrics['closed_ink_px'] = int(np.sum(mask_closed > 0))
-    cv2.imwrite(str(out_dir / 'global_step5_closed.png'), mask_closed)
-    artifacts['step5'] = 'global_step5_closed.png'
+    metrics["closed_ink_px"] = int(np.sum(mask_closed > 0))
+    cv2.imwrite(str(out_dir / "global_step5_closed.png"), mask_closed)
+    artifacts["step5"] = "global_step5_closed.png"
 
     # Prepare for Step 6 and 7 by drawing on original crop
     contours_img = target_bgr.copy()
     clusters_img = target_bgr.copy()
 
     contours, _ = cv2.findContours(mask_closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    metrics['contour_count_raw'] = len(contours)
-    
+    metrics["contour_count_raw"] = len(contours)
+
     valid_count = 0
     rejected_count = 0
     for contour_trace in global_trace.contours:
-        if contour_trace.status == 'valid':
+        if contour_trace.status == "valid":
             valid_count += 1
             color = (0, 255, 0)  # Green
         else:
             rejected_count += 1
             color = (0, 0, 255)  # Red
-        
-        x, y, cw, ch = contour_trace.bbox
-        cv2.rectangle(contours_img, (x, y), (x+cw, y+ch), color, 1)
 
-    metrics['contour_count_valid'] = valid_count
-    metrics['contour_count_rejected'] = rejected_count
+        x, y, cw, ch = contour_trace.bbox
+        cv2.rectangle(contours_img, (x, y), (x + cw, y + ch), color, 1)
+
+    metrics["contour_count_valid"] = valid_count
+    metrics["contour_count_rejected"] = rejected_count
 
     # Step 6: Contours Overlay
-    cv2.imwrite(str(out_dir / 'global_step6_contours.png'), contours_img)
-    artifacts['step6'] = 'global_step6_contours.png'
+    cv2.imwrite(str(out_dir / "global_step6_contours.png"), contours_img)
+    artifacts["step6"] = "global_step6_contours.png"
 
     # Step 7: Cluster + Hull Overlay
     qualifying_count = 0
     for cluster_trace in global_trace.clusters:
         if cluster_trace.qualifies_global:
             qualifying_count += 1
-        
+
         # Bbox in blue
         cx, cy, cw, ch = cluster_trace.bbox
-        cv2.rectangle(clusters_img, (cx, cy), (cx+cw, cy+ch), (255, 0, 0), 2)
-        
-        # We don't have the exact hull points in trace, so we recompute just the hull points for visualization
-        # based on valid contours if needed, but wait, we can just highlight the bbox for now, 
-        # or we could recompute hull. For simplicity, just drawing the cluster bbox is enough.
-        
-    metrics['cluster_count'] = len(global_trace.clusters)
-    metrics['cluster_qualifying'] = qualifying_count
-    metrics['merge_threshold_px'] = MERGE_THRESHOLD
-    metrics['extremes_reject_threshold_px'] = EXTREMES_REJECT_THRESHOLD
+        cv2.rectangle(clusters_img, (cx, cy), (cx + cw, cy + ch), (255, 0, 0), 2)
 
-    cv2.imwrite(str(out_dir / 'global_step7_clusters.png'), clusters_img)
-    artifacts['step7'] = 'global_step7_clusters.png'
+        # We don't have the exact hull points in trace, so we recompute just the hull points for visualization
+        # based on valid contours if needed, but wait, we can just highlight the bbox for now,
+        # or we could recompute hull. For simplicity, just drawing the cluster bbox is enough.
+
+    metrics["cluster_count"] = len(global_trace.clusters)
+    metrics["cluster_qualifying"] = qualifying_count
+    metrics["merge_threshold_px"] = MERGE_THRESHOLD
+    metrics["extremes_reject_threshold_px"] = EXTREMES_REJECT_THRESHOLD
+
+    cv2.imwrite(str(out_dir / "global_step7_clusters.png"), clusters_img)
+    artifacts["step7"] = "global_step7_clusters.png"
 
     return metrics, artifacts
-
 
 
 def _capture_local_ink_pipeline(
@@ -1563,13 +1579,13 @@ def _capture_local_ink_pipeline(
     out_dir.mkdir(parents=True, exist_ok=True)
     metrics: dict[str, Any] = {}
     artifacts: dict[str, str] = {}
-    
+
     # Setup metrics constants
-    metrics['local_pad_px'] = LOCAL_PAD
-    metrics['outer_radius_px'] = OUTER_RADIUS
-    metrics['threshold_value'] = DIFF_THRESHOLD
-    metrics['marked_threshold_deg'] = MARKED_THRESHOLD_DEG
-    metrics['blank_threshold_deg'] = BLANK_THRESHOLD_DEG
+    metrics["local_pad_px"] = LOCAL_PAD
+    metrics["outer_radius_px"] = OUTER_RADIUS
+    metrics["threshold_value"] = DIFF_THRESHOLD
+    metrics["marked_threshold_deg"] = MARKED_THRESHOLD_DEG
+    metrics["blank_threshold_deg"] = BLANK_THRESHOLD_DEG
 
     bbox_tuple = (
         roi.bbox.x,
@@ -1580,38 +1596,43 @@ def _capture_local_ink_pipeline(
     # Step 0: Aligned ROI
     aligned_roi = aligned_image.crop(bbox_tuple)
     aligned_cv2 = cv2.cvtColor(np.array(aligned_roi), cv2.COLOR_RGB2BGR)
-    cv2.imwrite(str(out_dir / 'local_step0_aligned.png'), aligned_cv2)
-    artifacts['step0'] = 'local_step0_aligned.png'
+    cv2.imwrite(str(out_dir / "local_step0_aligned.png"), aligned_cv2)
+    artifacts["step0"] = "local_step0_aligned.png"
 
     # Step 1: Reference ROI
     reference_roi = reference_image.crop(bbox_tuple)
     ref_cv2 = cv2.cvtColor(np.array(reference_roi), cv2.COLOR_RGB2BGR)
-    cv2.imwrite(str(out_dir / 'local_step1_reference.png'), ref_cv2)
-    artifacts['step1'] = 'local_step1_reference.png'
+    cv2.imwrite(str(out_dir / "local_step1_reference.png"), ref_cv2)
+    artifacts["step1"] = "local_step1_reference.png"
 
     median_ref_bgr = cv2.cvtColor(np.array(reference_image), cv2.COLOR_RGB2BGR)
-    
+
     # We call get_local_roi_crops again just to get target_bgr and ref_gray padded
     target_bgr, diff_mask, crop_coords, ref_gray = get_local_roi_crops(
         aligned_image, median_ref_bgr, roi.bbox, LOCAL_PAD
     )
-    
+
     target_gray = cv2.cvtColor(target_bgr, cv2.COLOR_BGR2GRAY)
-    
+
     # Step 2: AbsDiff
     diff = cv2.absdiff(ref_gray, target_gray)
-    metrics['absdiff_nonzero_px'] = int(np.sum(diff > 0))
-    cv2.imwrite(str(out_dir / 'local_step2_absdiff.png'), diff)
-    artifacts['step2'] = 'local_step2_absdiff.png'
+    metrics["absdiff_nonzero_px"] = int(np.sum(diff > 0))
+    cv2.imwrite(str(out_dir / "local_step2_absdiff.png"), diff)
+    artifacts["step2"] = "local_step2_absdiff.png"
 
     # Step 3: Diff Mask
-    metrics['diff_mask_ink_px'] = roi_trace.diff_ink_pixels
-    cv2.imwrite(str(out_dir / 'local_step3_diff_mask.png'), diff_mask)
-    artifacts['step3'] = 'local_step3_diff_mask.png'
+    metrics["diff_mask_ink_px"] = roi_trace.diff_ink_pixels
+    cv2.imwrite(str(out_dir / "local_step3_diff_mask.png"), diff_mask)
+    artifacts["step3"] = "local_step3_diff_mask.png"
 
     h, w = diff_mask.shape
     center_x, center_y = w / 2.0, h / 2.0
-    bx, by, bw, bh = roi_trace.text_bbox['x'], roi_trace.text_bbox['y'], roi_trace.text_bbox['w'], roi_trace.text_bbox['h']
+    bx, by, bw, bh = (
+        roi_trace.text_bbox["x"],
+        roi_trace.text_bbox["y"],
+        roi_trace.text_bbox["w"],
+        roi_trace.text_bbox["h"],
+    )
 
     y_grid, x_grid = np.ogrid[:h, :w]
     dist_sq = (x_grid - center_x) ** 2 + (y_grid - center_y) ** 2
@@ -1624,35 +1645,37 @@ def _capture_local_ink_pipeline(
 
     # Step 4: Core Mask
     core_mask_img = np.zeros((h, w, 3), dtype=np.uint8)
-    core_mask_img[core_mask] = (0, 0, 255) # Red for core
-    cv2.imwrite(str(out_dir / 'local_step4_core_mask.png'), core_mask_img)
-    artifacts['step4'] = 'local_step4_core_mask.png'
-    metrics['core_mask_px'] = roi_trace.core_mask_pixels
+    core_mask_img[core_mask] = (0, 0, 255)  # Red for core
+    cv2.imwrite(str(out_dir / "local_step4_core_mask.png"), core_mask_img)
+    artifacts["step4"] = "local_step4_core_mask.png"
+    metrics["core_mask_px"] = roi_trace.core_mask_pixels
 
     # Step 5: Outer Mask
     outer_mask_img = np.zeros((h, w, 3), dtype=np.uint8)
-    outer_mask_img[outer_mask] = (255, 0, 0) # Blue for outer
-    cv2.imwrite(str(out_dir / 'local_step5_outer_mask.png'), outer_mask_img)
-    artifacts['step5'] = 'local_step5_outer_mask.png'
-    metrics['outer_mask_px'] = roi_trace.outer_mask_pixels
+    outer_mask_img[outer_mask] = (255, 0, 0)  # Blue for outer
+    cv2.imwrite(str(out_dir / "local_step5_outer_mask.png"), outer_mask_img)
+    artifacts["step5"] = "local_step5_outer_mask.png"
+    metrics["outer_mask_px"] = roi_trace.outer_mask_pixels
 
     radial_mask = diff_mask.copy()
     radial_mask[core_mask] = 0
     radial_mask[outer_mask] = 0
 
     # Step 6: Radial Mask
-    metrics['radial_mask_before_morph_px'] = roi_trace.radial_mask_before_morph_px
-    cv2.imwrite(str(out_dir / 'local_step6_radial_mask.png'), radial_mask)
-    artifacts['step6'] = 'local_step6_radial_mask.png'
+    metrics["radial_mask_before_morph_px"] = roi_trace.radial_mask_before_morph_px
+    cv2.imwrite(str(out_dir / "local_step6_radial_mask.png"), radial_mask)
+    artifacts["step6"] = "local_step6_radial_mask.png"
 
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (LOCAL_CLOSE_KERNEL, LOCAL_CLOSE_KERNEL))
     radial_dilated = cv2.dilate(radial_mask, kernel, iterations=LOCAL_CLOSE_ITERS)
-    radial_closed = cv2.morphologyEx(radial_dilated, cv2.MORPH_CLOSE, kernel, iterations=LOCAL_CLOSE_ITERS)
+    radial_closed = cv2.morphologyEx(
+        radial_dilated, cv2.MORPH_CLOSE, kernel, iterations=LOCAL_CLOSE_ITERS
+    )
 
     # Step 7: Radial Closed
-    metrics['radial_mask_after_morph_px'] = roi_trace.radial_ink_pixels
-    cv2.imwrite(str(out_dir / 'local_step7_radial_closed.png'), radial_closed)
-    artifacts['step7'] = 'local_step7_radial_closed.png'
+    metrics["radial_mask_after_morph_px"] = roi_trace.radial_ink_pixels
+    cv2.imwrite(str(out_dir / "local_step7_radial_closed.png"), radial_closed)
+    artifacts["step7"] = "local_step7_radial_closed.png"
 
     # Step 8: Radial Histogram
     hist_img = np.zeros((h, w, 3), dtype=np.uint8)
@@ -1660,17 +1683,27 @@ def _capture_local_ink_pipeline(
         max_val = max(roi_trace.radial_histogram) if max(roi_trace.radial_histogram) > 0 else 1
         for i in range(NUM_BINS):
             val = roi_trace.radial_histogram[i]
-            if val == 0: continue
-            
+            if val == 0:
+                continue
+
             start_angle = i * DEGREES_PER_BIN
             end_angle = (i + 1) * DEGREES_PER_BIN
-            
+
             radius = int((val / max_val) * (min(w, h) / 2))
-            
-            cv2.ellipse(hist_img, (int(center_x), int(center_y)), (radius, radius), 0, start_angle, end_angle, (0, 255, 255), -1)
-            
-    cv2.imwrite(str(out_dir / 'local_step8_radial_hist.png'), hist_img)
-    artifacts['step8'] = 'local_step8_radial_hist.png'
+
+            cv2.ellipse(
+                hist_img,
+                (int(center_x), int(center_y)),
+                (radius, radius),
+                0,
+                start_angle,
+                end_angle,
+                (0, 255, 255),
+                -1,
+            )
+
+    cv2.imwrite(str(out_dir / "local_step8_radial_hist.png"), hist_img)
+    artifacts["step8"] = "local_step8_radial_hist.png"
 
     # Step 9: Composite Overlay
     composite = target_bgr.copy()
@@ -1680,9 +1713,9 @@ def _capture_local_ink_pipeline(
     composite[outer_mask] = composite[outer_mask] * 0.5 + np.array([255, 0, 0]) * 0.5
     # Highlight ink in yellow
     composite[radial_closed > 0] = [0, 255, 255]
-    
-    cv2.imwrite(str(out_dir / 'local_step9_composite.png'), composite)
-    artifacts['step9'] = 'local_step9_composite.png'
+
+    cv2.imwrite(str(out_dir / "local_step9_composite.png"), composite)
+    artifacts["step9"] = "local_step9_composite.png"
 
     return metrics, artifacts
 
@@ -1692,47 +1725,54 @@ def generate_question_artifacts(
     median_ref_bgr: np.ndarray,
     global_trace: GlobalTopologyTrace,
     roi_traces: list[RoiPixelTrace],
-    output_dir: Path
+    output_dir: Path,
 ) -> dict[str, str]:
     output_dir.mkdir(parents=True, exist_ok=True)
     artifacts = {}
-    
+
     if global_trace.ran and global_trace.group_crop:
         c = global_trace.group_crop
-        crop_img = aligned_image_rgb.crop((c['x1'], c['y1'], c['x2'], c['y2']))
+        crop_img = aligned_image_rgb.crop((c["x1"], c["y1"], c["x2"], c["y2"]))
         draw_img = np.array(crop_img)
         draw_img = cv2.cvtColor(draw_img, cv2.COLOR_RGB2BGR)
-        
+
         for contour_trace in global_trace.contours:
             x, y, w, h = contour_trace.bbox
             color = (0, 255, 0) if contour_trace.status == "valid" else (0, 0, 255)
-            cv2.rectangle(draw_img, (x, y), (x+w, y+h), color, 1)
-            
+            cv2.rectangle(draw_img, (x, y), (x + w, y + h), color, 1)
+
         for cluster in global_trace.clusters:
             hx, hy, hw, hh = cluster.bbox
-            cv2.rectangle(draw_img, (hx, hy), (hx+hw, hy+hh), (255, 0, 0), 2)
-            
+            cv2.rectangle(draw_img, (hx, hy), (hx + hw, hy + hh), (255, 0, 0), 2)
+
         global_filename = f"{global_trace.question_id}_global.png"
         cv2.imwrite(str(output_dir / global_filename), draw_img)
         artifacts["global"] = global_filename
-        
+
     for roi in roi_traces:
         if roi.crop_coords:
             c = roi.crop_coords
-            roi_crop = aligned_image_rgb.crop((c['x1'], c['y1'], c['x2'], c['y2']))
+            roi_crop = aligned_image_rgb.crop((c["x1"], c["y1"], c["x2"], c["y2"]))
             draw_img = np.array(roi_crop)
             draw_img = cv2.cvtColor(draw_img, cv2.COLOR_RGB2BGR)
-            
+
             if roi.text_bbox:
-                x, y, w, h = roi.text_bbox["x"], roi.text_bbox["y"], roi.text_bbox["w"], roi.text_bbox["h"]
-                cv2.rectangle(draw_img, (x, y), (x+w, y+h), (255, 0, 255), 1)
-                
+                x, y, w, h = (
+                    roi.text_bbox["x"],
+                    roi.text_bbox["y"],
+                    roi.text_bbox["w"],
+                    roi.text_bbox["h"],
+                )
+                cv2.rectangle(draw_img, (x, y), (x + w, y + h), (255, 0, 255), 1)
+
             opt_filename = f"{global_trace.question_id}_{roi.option_id}.png"
             cv2.imwrite(str(output_dir / opt_filename), draw_img)
             artifacts[f"option_{roi.option_id}"] = opt_filename
-            
+
     return artifacts
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     import sys
+
     sys.exit(main())

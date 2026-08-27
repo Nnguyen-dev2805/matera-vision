@@ -8,14 +8,12 @@ from typing import TYPE_CHECKING, Any, Literal
 import cv2
 import numpy as np
 
-from matera.vision.contracts import MarkScore
-
 if TYPE_CHECKING:
     from PIL import Image
 
     from matera.core.layout import PageLayout
     from matera.core.profile import FormProfile
-    from matera.vision.contracts import AlignedPage
+    from matera.vision.contracts import AlignedPage, MarkScore
 
 
 @dataclass(frozen=True)
@@ -131,7 +129,6 @@ class OptionMarkEvidence:
     strategy: str
     legacy_prediction: Literal["MARKED", "BLANK", "AMBIGUOUS"]
     legacy_method: str
-    legacy_score: float
     selected_by_global: bool
     local: LocalOptionEvidence | None
     hsv_fallback: HsvFallbackEvidence | None
@@ -159,31 +156,9 @@ class PageMarkEvidence:
     thresholds: MarkThresholdEvidence
 
 
-def evidence_to_mark_scores(
-    evidence: PageMarkEvidence,
-    *,
-    debug_dir: str | Path | None = None,
-) -> list[MarkScore]:
-    """Convert the structured PageMarkEvidence into legacy MarkScore objects."""
-    scores = []
-    
-    for question in evidence.questions:
-        for opt in question.option_evidence:
-            scores.append(MarkScore(
-                question_id=opt.question_id,
-                option_id=opt.option_id,
-                score=opt.legacy_score,
-                strategy=opt.strategy,
-                method=opt.legacy_method,
-                image_crop=None,
-                evidence_path=None
-            ))
-            
-    return scores
-
-
 def evidence_to_json_dict(evidence: PageMarkEvidence) -> dict[str, Any]:
     """Convert PageMarkEvidence into a JSON-serializable dictionary."""
+
     def _convert(obj: Any) -> Any:
         if dataclasses.is_dataclass(obj):
             return {k: _convert(v) for k, v in dataclasses.asdict(obj).items()}
@@ -201,7 +176,7 @@ def evidence_to_json_dict(evidence: PageMarkEvidence) -> dict[str, Any]:
             return str(obj)
         else:
             return obj
-            
+
     return _convert(evidence)
 
 
@@ -213,43 +188,43 @@ def compute_local_option_evidence(
     num_bins: int = 72,
     min_ink_per_bin: int = 2,
 ) -> LocalOptionEvidence:
-    
+
     bx, by, bw, bh = text_bbox
     h, w = mask_raw.shape
     cx, cy = w / 2.0, h / 2.0
-    
+
     bx = max(0, bx - 2)
     by = max(0, by - 2)
     bw = bw + 4
     bh = bh + 4
-    
+
     Y, X = np.ogrid[:h, :w]
-    dist_sq = (X - cx)**2 + (Y - cy)**2
+    dist_sq = (X - cx) ** 2 + (Y - cy) ** 2
     outer_mask = dist_sq > outer_radius**2
-    
+
     core_mask = np.zeros((h, w), dtype=bool)
-    by_e = min(h, by+bh)
-    bx_e = min(w, bx+bw)
+    by_e = min(h, by + bh)
+    bx_e = min(w, bx + bw)
     core_mask[by:by_e, bx:bx_e] = True
-    
+
     mask_radial = mask_raw.copy()
     mask_radial[core_mask] = 0
     mask_radial[outer_mask] = 0
-    
+
     radial_mask_before_morph_px = int(np.sum(mask_radial > 0))
-    
+
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     mask_dilated = cv2.dilate(mask_radial, kernel, iterations=1)
     mask_closed = cv2.morphologyEx(mask_dilated, cv2.MORPH_CLOSE, kernel, iterations=1)
-    
+
     ys, xs = np.where(mask_closed > 0)
     radial_ink_pixels = len(xs)
-    
+
     degrees_covered = 0.0
     active_bin_count = 0
     hist_counts = np.zeros(num_bins, dtype=int)
     degrees_per_bin = 360.0 / num_bins
-    
+
     if radial_ink_pixels > 0:
         dx = xs.astype(float) - cx
         dy = ys.astype(float) - cy
@@ -264,24 +239,33 @@ def compute_local_option_evidence(
                 active_bins[i] = 1
         active_bin_count = int(np.sum(active_bins))
         degrees_covered = float(active_bin_count * degrees_per_bin)
-        
+
     core_mask_pixels = int(np.sum(core_mask))
     outer_mask_pixels = int(np.sum(outer_mask))
 
     crop_dict = {
-        "x1": crop_coords[0], "y1": crop_coords[1],
-        "x2": crop_coords[2], "y2": crop_coords[3],
+        "x1": crop_coords[0],
+        "y1": crop_coords[1],
+        "x2": crop_coords[2],
+        "y2": crop_coords[3],
     }
     text_bbox_dict = {
-        "x": text_bbox[0], "y": text_bbox[1],
-        "w": text_bbox[2], "h": text_bbox[3],
+        "x": text_bbox[0],
+        "y": text_bbox[1],
+        "w": text_bbox[2],
+        "h": text_bbox[3],
     }
-        
+
+    diff_ink_pixels = int(np.sum(mask_raw > 0))
+    cnts, _ = cv2.findContours(mask_raw, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    diff_contour_count = len(cnts)
+    diff_contour_areas = tuple(float(cv2.contourArea(c)) for c in cnts)
+
     return LocalOptionEvidence(
         crop_coords=crop_dict,
-        diff_ink_pixels=0,
-        diff_contour_count=0,
-        diff_contour_areas=(),
+        diff_ink_pixels=diff_ink_pixels,
+        diff_contour_count=diff_contour_count,
+        diff_contour_areas=diff_contour_areas,
         text_bbox=text_bbox_dict,
         core_mask_pixels=core_mask_pixels,
         outer_mask_pixels=outer_mask_pixels,
@@ -289,8 +273,9 @@ def compute_local_option_evidence(
         radial_ink_pixels=radial_ink_pixels,
         radial_active_bin_count=active_bin_count,
         radial_degrees_covered=degrees_covered,
-        radial_histogram=tuple(hist_counts.tolist())
+        radial_histogram=tuple(hist_counts.tolist()),
     )
+
 
 def compute_global_topology_evidence(
     aligned_image_rgb: Image.Image,
@@ -311,9 +296,9 @@ def compute_global_topology_evidence(
         get_horizontal_extremes,
         min_contour_distance,
     )
-    
+
     question_id = rois[0].question_id if rois else ""
-    
+
     if len(rois) <= 1:
         return GlobalTopologyEvidence(
             question_id=question_id,
@@ -324,32 +309,32 @@ def compute_global_topology_evidence(
             option_centers=(),
             contours=(),
             clusters=(),
-            global_marked=frozenset()
+            global_marked=frozenset(),
         )
-        
+
     crop_result = compute_adaptive_global_crop(aligned_image_rgb, median_ref_bgr, rois)
     crop = crop_result.crop
     crop_x1, crop_y1, crop_x2, crop_y2 = crop["x1"], crop["y1"], crop["x2"], crop["y2"]
-    
+
     crop_img = aligned_image_rgb.crop((crop_x1, crop_y1, crop_x2, crop_y2))
     target_bgr = cv2.cvtColor(np.array(crop_img), cv2.COLOR_RGB2BGR)
     ref_crop = median_ref_bgr[crop_y1:crop_y2, crop_x1:crop_x2]
-    
+
     target_gray = cv2.cvtColor(target_bgr, cv2.COLOR_BGR2GRAY)
     ref_gray = cv2.cvtColor(ref_crop, cv2.COLOR_BGR2GRAY)
-    
+
     diff = cv2.absdiff(ref_gray, target_gray)
     blurred = cv2.GaussianBlur(diff, GAUSS_KERNEL, 0)
     _, mask_raw = cv2.threshold(blurred, DIFF_THRESHOLD, 255, cv2.THRESH_BINARY)
-    
+
     h, w = mask_raw.shape
     mask_raw[:15, :] = 0
-    mask_raw[h-15:, :] = 0
-    
+    mask_raw[h - 15 :, :] = 0
+
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (CLOSE_KERNEL_SIZE, CLOSE_KERNEL_SIZE))
     mask_closed = cv2.morphologyEx(mask_raw, cv2.MORPH_CLOSE, kernel, iterations=CLOSE_ITERATIONS)
     contours, _ = cv2.findContours(mask_closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
+
     global_marked = set()
     option_centers = {}
     option_centers_ev = []
@@ -358,7 +343,7 @@ def compute_global_topology_evidence(
         cy = (r.bbox.y + r.bbox.h / 2.0) - crop_y1
         option_centers[r.option_id] = (cx, cy)
         option_centers_ev.append(OptionCenterEvidence(r.option_id, int(cx), int(cy)))
-        
+
     valid_cnts = []
     contours_ev = []
     for i, cnt in enumerate(contours):
@@ -366,23 +351,39 @@ def compute_global_topology_evidence(
         x, y, w_b, h_b = cv2.boundingRect(cnt)
         bbox = {"x": x, "y": y, "w": w_b, "h": h_b}
         if area <= 30:
-            contours_ev.append(GlobalContourEvidence(
-                f"cnt_{i}", float(area), bbox,
-                "REJECTED", "area <= 30",
-            ))
+            contours_ev.append(
+                GlobalContourEvidence(
+                    f"cnt_{i}",
+                    float(area),
+                    bbox,
+                    "REJECTED",
+                    "area <= 30",
+                )
+            )
             continue
         if (h_b > 100 and w_b < 25) or (w_b > 100 and h_b < 25):
-            contours_ev.append(GlobalContourEvidence(
-                f"cnt_{i}", float(area), bbox,
-                "REJECTED", "aspect ratio",
-            ))
+            contours_ev.append(
+                GlobalContourEvidence(
+                    f"cnt_{i}",
+                    float(area),
+                    bbox,
+                    "REJECTED",
+                    "aspect ratio",
+                )
+            )
             continue
-        
-        valid_cnts.append(cnt)
-        contours_ev.append(GlobalContourEvidence(
-            f"cnt_{i}", float(area), bbox, "ACCEPTED", None,
-        ))
-            
+
+        valid_cnts.append((f"cnt_{i}", cnt))
+        contours_ev.append(
+            GlobalContourEvidence(
+                f"cnt_{i}",
+                float(area),
+                bbox,
+                "ACCEPTED",
+                None,
+            )
+        )
+
     n = len(valid_cnts)
     if n == 0:
         return GlobalTopologyEvidence(
@@ -390,41 +391,48 @@ def compute_global_topology_evidence(
             ran=True,
             skip_reason="no valid contours",
             crop={"x1": crop_x1, "y1": crop_y1, "x2": crop_x2, "y2": crop_y2},
-            crop_expansion=getattr(crop_result, "crop_expansion", None),
+            crop_expansion={
+                "pads": crop_result.pads,
+                "iterations": crop_result.iterations,
+                "expanded": crop_result.expanded,
+                "stop_reason": crop_result.stop_reason,
+            }
+            if hasattr(crop_result, "expanded")
+            else None,
             option_centers=tuple(option_centers_ev),
             contours=tuple(contours_ev),
             clusters=(),
-            global_marked=frozenset()
+            global_marked=frozenset(),
         )
-        
+
     uf = UnionFind(n)
-    
+
     for i in range(n):
         for j in range(i + 1, n):
-            dist = min_contour_distance(valid_cnts[i], valid_cnts[j])
+            dist = min_contour_distance(valid_cnts[i][1], valid_cnts[j][1])
             if dist <= MERGE_THRESHOLD:
-                l1, r1 = get_horizontal_extremes(valid_cnts[i])
-                l2, r2 = get_horizontal_extremes(valid_cnts[j])
+                l1, r1 = get_horizontal_extremes(valid_cnts[i][1])
+                l2, r2 = get_horizontal_extremes(valid_cnts[j][1])
                 dist_left = np.linalg.norm(l1 - l2)
                 dist_right = np.linalg.norm(r1 - r2)
-                
+
                 if dist_left > EXTREMES_REJECT_THRESHOLD and dist_right > EXTREMES_REJECT_THRESHOLD:
                     pass
                 else:
                     uf.union(i, j)
-                    
+
     clusters = defaultdict(list)
     for i in range(n):
         clusters[uf.find(i)].append(valid_cnts[i])
-        
+
     clusters_ev = []
     for root, cnt_list in clusters.items():
-        combined_points = np.vstack(cnt_list)
-        total_area = sum([cv2.contourArea(c) for c in cnt_list])
-        
+        combined_points = np.vstack([c[1] for c in cnt_list])
+        total_area = sum([cv2.contourArea(c[1]) for c in cnt_list])
+
         hull = cv2.convexHull(combined_points)
         hull_area = cv2.contourArea(hull)
-        
+
         # Calculate cluster bbox and points
         cx_min, cy_min, cx_max, cy_max = float("inf"), float("inf"), 0.0, 0.0
         for pt in hull:
@@ -434,15 +442,17 @@ def compute_global_topology_evidence(
             cx_max = max(cx_max, px)
             cy_max = max(cy_max, py)
         cluster_bbox = {
-            "x": int(cx_min), "y": int(cy_min),
-            "w": int(cx_max - cx_min), "h": int(cy_max - cy_min),
+            "x": int(cx_min),
+            "y": int(cy_min),
+            "w": int(cx_max - cx_min),
+            "h": int(cy_max - cy_min),
         }
         hull_pts = tuple((int(pt[0][0]), int(pt[0][1])) for pt in hull)
-        
+
         inside_options = []
         option_dists = {}
         solidity = total_area / float(hull_area) if hull_area > 0 else 1.0
-        
+
         if hull_area > 1000 and solidity < 0.4:
             for opt_id, (cx, cy) in option_centers.items():
                 dist = cv2.pointPolygonTest(hull, (cx, cy), True)
@@ -450,32 +460,40 @@ def compute_global_topology_evidence(
                 if dist >= 0:
                     global_marked.add(opt_id)
                     inside_options.append(opt_id)
-                    
-        clusters_ev.append(GlobalClusterEvidence(
-            cluster_id=f"cluster_{root}",
-            contour_ids=tuple(
-                f"cnt_{i}" for i, _ in enumerate(cnt_list)
-            ),
-            total_area=float(total_area),
-            hull_area=float(hull_area),
-            solidity=float(solidity),
-            bbox=cluster_bbox,
-            hull_points=hull_pts,
-            inside_options=tuple(inside_options),
-            option_center_distances=option_dists
-        ))
-                        
+
+        clusters_ev.append(
+            GlobalClusterEvidence(
+                cluster_id=f"cluster_{root}",
+                contour_ids=tuple(c[0] for c in cnt_list),
+                total_area=float(total_area),
+                hull_area=float(hull_area),
+                solidity=float(solidity),
+                bbox=cluster_bbox,
+                hull_points=hull_pts,
+                inside_options=tuple(inside_options),
+                option_center_distances=option_dists,
+            )
+        )
+
     return GlobalTopologyEvidence(
         question_id=question_id,
         ran=True,
         skip_reason=None,
         crop={"x1": crop_x1, "y1": crop_y1, "x2": crop_x2, "y2": crop_y2},
-        crop_expansion=getattr(crop_result, "crop_expansion", None),
+        crop_expansion={
+            "pads": crop_result.pads,
+            "iterations": crop_result.iterations,
+            "expanded": crop_result.expanded,
+            "stop_reason": crop_result.stop_reason,
+        }
+        if hasattr(crop_result, "expanded")
+        else None,
         option_centers=tuple(option_centers_ev),
         contours=tuple(contours_ev),
         clusters=tuple(clusters_ev),
-        global_marked=frozenset(global_marked)
+        global_marked=frozenset(global_marked),
     )
+
 
 def extract_mark_evidence(
     aligned_page: AlignedPage,
@@ -498,28 +516,31 @@ def extract_mark_evidence(
         NUM_BINS,
         OUTER_RADIUS,
         get_local_roi_crops,
+        get_local_roi_crops_hsv,
         get_text_bounding_box,
         process_roi_hsv_ai,
     )
-    
+
     median_ref_bgr = cv2.cvtColor(np.array(reference_image), cv2.COLOR_RGB2BGR)
     orig_bgr = cv2.cvtColor(np.array(aligned_page.image), cv2.COLOR_RGB2BGR)
-    
+
     if debug_full_mask is None:
         debug_full_mask = np.zeros_like(orig_bgr)
-        
+
     strategy_map = {q.question_id: q.mark_strategy for q in profile.questions}
-    
+
     scale_x = orig_bgr.shape[1] / layout.width_px
     scale_y = orig_bgr.shape[0] / layout.height_px
-    
+
     # Save original bboxes before scaling for RoiEvidence.bbox
     original_bboxes: dict[tuple[str, str], dict[str, int]] = {}
     for roi in layout.rois:
         key = (roi.question_id, roi.option_id)
         original_bboxes[key] = {
-            "x": roi.bbox.x, "y": roi.bbox.y,
-            "w": roi.bbox.w, "h": roi.bbox.h,
+            "x": roi.bbox.x,
+            "y": roi.bbox.y,
+            "w": roi.bbox.w,
+            "h": roi.bbox.h,
         }
 
     scaled_rois = []
@@ -532,17 +553,17 @@ def extract_mark_evidence(
             h=int(roi.bbox.h * scale_y),
         )
         scaled_rois.append(dataclasses.replace(roi, bbox=new_bbox))
-        
+
     rois_by_q = defaultdict(list)
     for roi in scaled_rois:
         rois_by_q[roi.question_id].append(roi)
-        
+
     global_topology_evidence_dict = {}
     for q_id, rois in rois_by_q.items():
         if "Q14" not in q_id:
             gt_evidence = compute_global_topology_evidence(aligned_page.image, median_ref_bgr, rois)
             global_topology_evidence_dict[q_id] = gt_evidence
-            
+
             # Debug full mask update
             if gt_evidence.ran and gt_evidence.skip_reason is None:
                 crop_x1 = gt_evidence.crop["x1"]
@@ -550,132 +571,214 @@ def extract_mark_evidence(
                 for cl in gt_evidence.clusters:
                     if cl.hull_area > 1000 and cl.solidity < 0.4:
                         hull_pts = np.array(
-                            [[[pt[0] + crop_x1, pt[1] + crop_y1]]
-                             for pt in cl.hull_points],
+                            [[[pt[0] + crop_x1, pt[1] + crop_y1]] for pt in cl.hull_points],
                             dtype=np.int32,
                         )
                         cv2.drawContours(
-                            debug_full_mask, [hull_pts],
-                            0, (0, 255, 255), 2,
+                            debug_full_mask,
+                            [hull_pts],
+                            0,
+                            (0, 255, 255),
+                            2,
                         )
         else:
             global_topology_evidence_dict[q_id] = None
-            
+
     question_evidences = []
-    
+
     for q_id, rois in rois_by_q.items():
         opt_evidences = []
         roi_evidences = []
         gt_evidence = global_topology_evidence_dict[q_id]
         global_marked_set = gt_evidence.global_marked if gt_evidence else set()
-        
+
         for roi in rois:
             strategy = roi.mark_strategy_override or strategy_map.get(roi.question_id)
+            if not strategy or strategy not in ("circle", "tick", "checkbox", "rating"):
+                raise ValueError(
+                    f"Unknown or missing mark strategy: {strategy} for question {q_id}"
+                )
             opt_id = roi.option_id
-            
+
             orig_bbox = original_bboxes.get(
                 (q_id, opt_id),
-                {"x": roi.bbox.x, "y": roi.bbox.y,
-                 "w": roi.bbox.w, "h": roi.bbox.h},
+                {"x": roi.bbox.x, "y": roi.bbox.y, "w": roi.bbox.w, "h": roi.bbox.h},
             )
             scaled_bbox = {
-                "x": roi.bbox.x, "y": roi.bbox.y,
-                "w": roi.bbox.w, "h": roi.bbox.h,
+                "x": roi.bbox.x,
+                "y": roi.bbox.y,
+                "w": roi.bbox.w,
+                "h": roi.bbox.h,
             }
 
-            roi_evidences.append(RoiEvidence(
-                question_id=q_id,
-                option_id=opt_id,
-                bbox=orig_bbox,
-                scaled_bbox=scaled_bbox,
-                strategy=strategy,
-            ))
-            
+            roi_evidences.append(
+                RoiEvidence(
+                    question_id=q_id,
+                    option_id=opt_id,
+                    bbox=orig_bbox,
+                    scaled_bbox=scaled_bbox,
+                    strategy=strategy,
+                )
+            )
+
             pred = "AMBIGUOUS"
             method = "UNKNOWN"
             local_evidence = None
             hsv_evidence = None
-            
+
             if "Q14" not in q_id:
                 if opt_id in global_marked_set:
                     pred = "MARKED"
                     method = "GLOBAL_HULL"
                 else:
-                    target_bgr, mask_raw, crop_coords, ref_gray = (
-                        get_local_roi_crops(
-                            aligned_page.image,
-                            median_ref_bgr, roi.bbox, LOCAL_PAD,
-                        )
+                    target_bgr, mask_raw, crop_coords, ref_gray = get_local_roi_crops(
+                        aligned_page.image,
+                        median_ref_bgr,
+                        roi.bbox,
+                        LOCAL_PAD,
                     )
                     text_bbox = get_text_bounding_box(ref_gray)
-                    
+
                     local_evidence = compute_local_option_evidence(
-                        mask_raw, text_bbox, crop_coords,
-                        OUTER_RADIUS, NUM_BINS, MIN_INK_PER_BIN,
+                        mask_raw,
+                        text_bbox,
+                        crop_coords,
+                        OUTER_RADIUS,
+                        NUM_BINS,
+                        MIN_INK_PER_BIN,
                     )
-                    
+
+                    def _draw_radial_mask():
+                        if debug_full_mask is not None:
+                            h, w = mask_raw.shape
+                            cx, cy = w / 2.0, h / 2.0
+                            bx, by, bw, bh = text_bbox
+                            bx = max(0, bx - 2)
+                            by = max(0, by - 2)
+                            bw, bh = bw + 4, bh + 4
+
+                            Y, X = np.ogrid[:h, :w]
+                            dist_sq = (X - cx) ** 2 + (Y - cy) ** 2
+                            outer_mask = dist_sq > OUTER_RADIUS**2
+
+                            core_mask = np.zeros((h, w), dtype=bool)
+                            core_mask[by : min(h, by + bh), bx : min(w, bx + bw)] = True
+
+                            mask_radial = mask_raw.copy()
+                            mask_radial[core_mask] = 0
+                            mask_radial[outer_mask] = 0
+
+                            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+                            mask_dilated = cv2.dilate(mask_radial, kernel, iterations=1)
+                            mask_closed = cv2.morphologyEx(
+                                mask_dilated, cv2.MORPH_CLOSE, kernel, iterations=1
+                            )
+
+                            mask_bgr = cv2.cvtColor(mask_closed, cv2.COLOR_GRAY2BGR)
+                            cx1, cy1, cx2, cy2 = crop_coords
+                            try:
+                                debug_full_mask[cy1:cy2, cx1:cx2] = cv2.addWeighted(
+                                    debug_full_mask[cy1:cy2, cx1:cx2], 0.5, mask_bgr, 0.5, 0
+                                )
+                            except Exception:
+                                pass
+
                     if local_evidence.radial_degrees_covered >= MARKED_THRESHOLD_DEG:
                         pred = "MARKED"
                         method = "LOCAL_RADIAL"
+                        _draw_radial_mask()
                     elif local_evidence.radial_degrees_covered <= BLANK_THRESHOLD_DEG:
                         pred = "BLANK"
                         method = "LOCAL_RADIAL"
+                        _draw_radial_mask()
                     else:
                         pred, method = process_roi_hsv_ai(
-                            aligned_page, median_ref_bgr,
-                            roi, "FALLBACK",
+                            aligned_page,
+                            median_ref_bgr,
+                            roi,
+                            "FALLBACK",
                         )
+                        if debug_full_mask is not None:
+                            _, mask_hsv, _ = get_local_roi_crops_hsv(
+                                aligned_page.image, median_ref_bgr, roi.bbox, 0
+                            )
+                            mask_bgr = cv2.cvtColor(mask_hsv, cv2.COLOR_GRAY2BGR)
+                            mask_bgr[np.where((mask_bgr == [255, 255, 255]).all(axis=2))] = (
+                                255,
+                                0,
+                                255,
+                            )
+                            cx1, cy1, cx2, cy2 = crop_coords
+                            try:
+                                debug_full_mask[cy1:cy2, cx1:cx2] = cv2.addWeighted(
+                                    debug_full_mask[cy1:cy2, cx1:cx2], 0.5, mask_bgr, 0.5, 0
+                                )
+                            except Exception:
+                                pass
                         hsv_evidence = HsvFallbackEvidence(
                             method_prefix="FALLBACK",
                             hsv_ink_pixels=None,
                             classifier_probability=None,
-                            classifier_available=True,
+                            classifier_available=("_NO_AI" not in method),
                             decision=pred,
-                            method=method
+                            method=method,
                         )
             else:
                 pred, method = process_roi_hsv_ai(aligned_page, median_ref_bgr, roi, "HSV_AI")
+                if debug_full_mask is not None:
+                    _, mask_hsv, _ = get_local_roi_crops_hsv(
+                        aligned_page.image, median_ref_bgr, roi.bbox, 0
+                    )
+                    mask_bgr = cv2.cvtColor(mask_hsv, cv2.COLOR_GRAY2BGR)
+                    mask_bgr[np.where((mask_bgr == [255, 255, 255]).all(axis=2))] = (255, 0, 255)
+                    cx1, cy1 = max(0, roi.bbox.x), max(0, roi.bbox.y)
+                    cx2, cy2 = cx1 + roi.bbox.w, cy1 + roi.bbox.h
+                    try:
+                        debug_full_mask[cy1:cy2, cx1:cx2] = cv2.addWeighted(
+                            debug_full_mask[cy1:cy2, cx1:cx2], 0.5, mask_bgr, 0.5, 0
+                        )
+                    except Exception:
+                        pass
                 hsv_evidence = HsvFallbackEvidence(
                     method_prefix="HSV_AI",
                     hsv_ink_pixels=None,
                     classifier_probability=None,
-                    classifier_available=True,
+                    classifier_available=("_NO_AI" not in method),
                     decision=pred,
-                    method=method
+                    method=method,
                 )
-                
-            score_val = 1.0 if pred == "MARKED" else 0.0 if pred == "BLANK" else 0.5
-            
-            opt_evidences.append(OptionMarkEvidence(
-                question_id=q_id,
-                option_id=opt_id,
-                strategy=strategy,
-                legacy_prediction=pred,
-                legacy_method=method,
-                legacy_score=score_val,
-                selected_by_global=(opt_id in global_marked_set),
-                local=local_evidence,
-                hsv_fallback=hsv_evidence,
-                suspicion_notes=()
-            ))
-            
+
+            opt_evidences.append(
+                OptionMarkEvidence(
+                    question_id=q_id,
+                    option_id=opt_id,
+                    strategy=strategy,
+                    legacy_prediction=pred,
+                    legacy_method=method,
+                    selected_by_global=(opt_id in global_marked_set),
+                    local=local_evidence,
+                    hsv_fallback=hsv_evidence,
+                    suspicion_notes=(),
+                )
+            )
+
         q_def = next(
-            (q for q in profile.questions
-             if q.question_id == q_id), None,
+            (q for q in profile.questions if q.question_id == q_id),
+            None,
         )
-        response_type = (
-            q_def.response_type if q_def else "single_select"
+        response_type = q_def.response_type if q_def else "single_select"
+
+        question_evidences.append(
+            QuestionMarkEvidence(
+                question_id=q_id,
+                strategy=strategy_map.get(q_id, "unknown"),
+                response_type=response_type,
+                rois=tuple(roi_evidences),
+                global_topology=gt_evidence,
+                option_evidence=tuple(opt_evidences),
+            )
         )
 
-        question_evidences.append(QuestionMarkEvidence(
-            question_id=q_id,
-            strategy=strategy_map.get(q_id, "unknown"),
-            response_type=response_type,
-            rois=tuple(roi_evidences),
-            global_topology=gt_evidence,
-            option_evidence=tuple(opt_evidences),
-        ))
-        
     return PageMarkEvidence(
         page_number=aligned_page.page_number,
         form_id=aligned_page.profile_form_id,
@@ -709,3 +812,61 @@ def extract_mark_evidence(
             global_pad_px=GLOBAL_PAD,
         ),
     )
+
+
+def evidence_to_mark_scores(
+    page_evidence: PageMarkEvidence,
+    aligned_page: "AlignedPage",
+    debug_dir: str | None = None,
+) -> list["MarkScore"]:
+    from pathlib import Path
+
+    from matera.vision.contracts import MarkScore
+
+    debug_path = Path(debug_dir) if debug_dir else None
+    if debug_path:
+        debug_path.mkdir(parents=True, exist_ok=True)
+
+    scores = []
+    for question in page_evidence.questions:
+        for opt in question.option_evidence:
+            score_val = (
+                1.0
+                if opt.legacy_prediction == "MARKED"
+                else 0.0
+                if opt.legacy_prediction == "BLANK"
+                else 0.5
+            )
+
+            image_crop = None
+            evidence_path = None
+
+            # Spec requires behavior-preserving crop (exact unpadded scaled_bbox)
+            roi_ev = next((r for r in question.rois if r.option_id == opt.option_id), None)
+            if roi_ev:
+                scaled = roi_ev.scaled_bbox
+                cx1, cy1 = scaled["x"], scaled["y"]
+                cx2, cy2 = cx1 + scaled["w"], cy1 + scaled["h"]
+                image_crop = aligned_page.image.crop((cx1, cy1, cx2, cy2))
+
+            if debug_path and image_crop:
+                evidence_file = (
+                    debug_path
+                    / f"page_{page_evidence.page_number}_{opt.question_id}_{opt.option_id}.png"
+                )
+                image_crop.save(evidence_file)
+                evidence_path = evidence_file
+
+            scores.append(
+                MarkScore(
+                    question_id=opt.question_id,
+                    option_id=opt.option_id,
+                    score=score_val,
+                    strategy=opt.strategy,
+                    method=opt.legacy_method,
+                    image_crop=image_crop,
+                    evidence_path=evidence_path,
+                )
+            )
+
+    return scores
