@@ -115,51 +115,22 @@ def get_local_roi_crops(aligned_image_rgb: Image.Image, median_ref_bgr: np.ndarr
     return target_bgr, mask_raw, (crop_x1, crop_y1, crop_x2, crop_y2), ref_gray
 
 def run_v11_global_topology(aligned_image_rgb: Image.Image, median_ref_bgr: np.ndarray, rois: list, full_mask_bgr: np.ndarray) -> set[str]:
-    from collections import defaultdict
-    if len(rois) <= 1:
-        return set()
-        
-    from matera.vision.adaptive_crop import compute_adaptive_global_crop
+    from matera.vision.evidence import compute_global_topology_evidence
+    evidence = compute_global_topology_evidence(aligned_image_rgb, median_ref_bgr, rois)
     
-    crop_result = compute_adaptive_global_crop(aligned_image_rgb, median_ref_bgr, rois)
-    crop = crop_result.crop
-    crop_x1, crop_y1, crop_x2, crop_y2 = crop["x1"], crop["y1"], crop["x2"], crop["y2"]
-    
-    crop_img = aligned_image_rgb.crop((crop_x1, crop_y1, crop_x2, crop_y2))
-    target_bgr = cv2.cvtColor(np.array(crop_img), cv2.COLOR_RGB2BGR)
-    ref_crop = median_ref_bgr[crop_y1:crop_y2, crop_x1:crop_x2]
-    
-    target_gray = cv2.cvtColor(target_bgr, cv2.COLOR_BGR2GRAY)
-    ref_gray = cv2.cvtColor(ref_crop, cv2.COLOR_BGR2GRAY)
-    
-    diff = cv2.absdiff(ref_gray, target_gray)
-    blurred = cv2.GaussianBlur(diff, GAUSS_KERNEL, 0)
-    _, mask_raw = cv2.threshold(blurred, DIFF_THRESHOLD, 255, cv2.THRESH_BINARY)
-    
-    h, w = mask_raw.shape
-    mask_raw[:15, :] = 0
-    mask_raw[h-15:, :] = 0
-    
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (CLOSE_KERNEL_SIZE, CLOSE_KERNEL_SIZE))
-    mask_closed = cv2.morphologyEx(mask_raw, cv2.MORPH_CLOSE, kernel, iterations=CLOSE_ITERATIONS)
-    contours, _ = cv2.findContours(mask_closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
-    global_marked = set()
-    option_centers = {}
-    for r in rois:
-        cx = (r.bbox.x + r.bbox.w / 2.0) - crop_x1
-        cy = (r.bbox.y + r.bbox.h / 2.0) - crop_y1
-        option_centers[r.option_id] = (cx, cy)
-        
-    valid_cnts = []
-    for cnt in contours:
-        if cv2.contourArea(cnt) <= 30: continue
-        x, y, w, h = cv2.boundingRect(cnt)
-        if (h > 100 and w < 25) or (w > 100 and h < 25): continue
-        valid_cnts.append(cnt)
-            
-    n = len(valid_cnts)
-    if n == 0: return global_marked
+    # Draw debug hulls as before
+    if evidence.ran and evidence.skip_reason is None:
+        import cv2
+        import numpy as np
+        crop_x1 = evidence.crop["x1"]
+        crop_y1 = evidence.crop["y1"]
+        for cl in evidence.clusters:
+            if cl.hull_area > 1000 and cl.solidity < 0.4:
+                hull_pts = np.array([[[pt[0] + crop_x1, pt[1] + crop_y1]] for pt in cl.hull_points], dtype=np.int32)
+                cv2.drawContours(full_mask_bgr, [hull_pts], 0, (0, 255, 255), 2)
+                
+    return set(evidence.global_marked)
+
         
     uf = UnionFind(n)
     
@@ -451,3 +422,4 @@ def extract_mark_scores(
 
 
 
+from matera.vision.evidence import GlobalTopologyEvidence, compute_global_topology_evidence

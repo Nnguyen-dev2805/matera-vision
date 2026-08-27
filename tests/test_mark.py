@@ -227,3 +227,34 @@ def test_adaptive_crop_preserves_global_marking():
     result = run_v11_global_topology(img, median_ref_bgr, rois, full_mask)
     assert "A" in result
     assert "B" in result
+
+def test_global_topology_evidence_adapter():
+    import numpy as np
+    from PIL import Image
+    
+    from matera.vision.mark import run_v11_global_topology, compute_global_topology_evidence
+    
+    # Create simple dummy data where global topology will just return early (because < 2 rois or no contours)
+    aligned_img = Image.new('RGB', (100, 100), (255, 255, 255))
+    median_ref = np.full((100, 100, 3), 255, dtype=np.uint8)
+    
+    import dataclasses
+    @dataclasses.dataclass
+    class DummyBbox:
+        x: int; y: int; w: int; h: int
+        
+    class DummyRoi:
+        def __init__(self, qid, oid):
+            self.question_id = qid
+            self.option_id = oid
+            self.bbox = DummyBbox(10, 10, 20, 20)
+            
+    rois = [DummyRoi("q1", "o1"), DummyRoi("q1", "o2")]
+    full_mask_bgr = np.zeros((100, 100, 3), dtype=np.uint8)
+    
+    adapter_result = run_v11_global_topology(aligned_img, median_ref, rois, full_mask_bgr)
+    
+    evidence = compute_global_topology_evidence(aligned_img, median_ref, rois)
+    
+    assert set(evidence.global_marked) == adapter_result
+
