@@ -19,6 +19,7 @@ from matera.core.layout import BoundingBox, PageLayout, RoiDef, load_layout_prof
 from matera.core.profile import FormProfile, load_semantic_profile
 from matera.data.extract import extract_pages
 from matera.vision.alignment import align_page
+from matera.vision.evidence import extract_page_evidence, evidence_to_json_dict
 from matera.vision.contracts import AlignmentConfig, MarkScore, RoutingConfig
 from matera.vision.mark import (
     BLANK_THRESHOLD_DEG,
@@ -109,6 +110,7 @@ class PixelProbeReport:
     global_topology: dict[str, GlobalTopologyTrace]
     traces: list[Any]
     artifacts: dict[str, str]
+    evidence: dict[str, Any] | None = None
 
 
 @dataclasses.dataclass
@@ -1176,6 +1178,20 @@ def run_pixel_probe(
     overlay = _draw_page_overlay(aligned_page.image, traces)
     _write_image(page_dir / "page_overlay_all_rois.png", overlay)
 
+    try:
+        raw_evidence = extract_page_evidence(
+            aligned_page=aligned_page,
+            profile=semantic_profile,
+            layout=layout,
+            reference_image=reference_image,
+            debug_dir=str(page_dir),
+            debug_full_mask=None,
+        )
+        evidence_dict = evidence_to_json_dict(raw_evidence)
+    except Exception as e:
+        print(f"Warning: Failed to extract evidence layer: {e}")
+        evidence_dict = None
+
     report = PixelProbeReport(
         report_version=2,
         source_pdf=str(pdf_path),
@@ -1187,7 +1203,8 @@ def run_pixel_probe(
         questions=[], 
         global_topology=global_topology_traces,
         traces=traces,
-        artifacts={"page_overlay": "page_overlay_all_rois.png"}
+        artifacts={"page_overlay": "page_overlay_all_rois.png"},
+        evidence=evidence_dict
     )
 
     with open(page_dir / "report.json", "w", encoding="utf-8") as f:
