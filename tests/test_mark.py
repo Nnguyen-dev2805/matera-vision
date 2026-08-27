@@ -232,7 +232,8 @@ def test_global_topology_evidence_adapter():
     import numpy as np
     from PIL import Image
     
-    from matera.vision.mark import run_v11_global_topology, compute_global_topology_evidence
+    from matera.vision.mark import run_v11_global_topology
+    from matera.vision.evidence import compute_global_topology_evidence
     
     # Create simple dummy data where global topology will just return early (because < 2 rois or no contours)
     aligned_img = Image.new('RGB', (100, 100), (255, 255, 255))

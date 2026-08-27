@@ -1,11 +1,21 @@
-import json
+from __future__ import annotations
+
 import dataclasses
 from dataclasses import dataclass
-from typing import Any, Literal
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, Literal
+
+import cv2
 import numpy as np
 
 from matera.vision.contracts import MarkScore
+
+if TYPE_CHECKING:
+    from PIL import Image
+
+    from matera.core.layout import PageLayout
+    from matera.core.profile import FormProfile
+    from matera.vision.contracts import AlignedPage
 
 
 @dataclass(frozen=True)
@@ -149,7 +159,11 @@ class PageMarkEvidence:
     thresholds: MarkThresholdEvidence
 
 
-def evidence_to_mark_scores(evidence: PageMarkEvidence, *, debug_dir: str | Path | None = None) -> list[MarkScore]:
+def evidence_to_mark_scores(
+    evidence: PageMarkEvidence,
+    *,
+    debug_dir: str | Path | None = None,
+) -> list[MarkScore]:
     """Convert the structured PageMarkEvidence into legacy MarkScore objects."""
     scores = []
     
@@ -190,16 +204,15 @@ def evidence_to_json_dict(evidence: PageMarkEvidence) -> dict[str, Any]:
             
     return _convert(evidence)
 
+
 def compute_local_option_evidence(
     mask_raw: np.ndarray,
     text_bbox: tuple[int, int, int, int],
     crop_coords: tuple[int, int, int, int],
     outer_radius: int = 32,
     num_bins: int = 72,
-    min_ink_per_bin: int = 2
+    min_ink_per_bin: int = 2,
 ) -> LocalOptionEvidence:
-    import cv2
-    import numpy as np
     
     bx, by, bw, bh = text_bbox
     h, w = mask_raw.shape
@@ -255,8 +268,14 @@ def compute_local_option_evidence(
     core_mask_pixels = int(np.sum(core_mask))
     outer_mask_pixels = int(np.sum(outer_mask))
 
-    crop_dict = {"x1": crop_coords[0], "y1": crop_coords[1], "x2": crop_coords[2], "y2": crop_coords[3]}
-    text_bbox_dict = {"x": text_bbox[0], "y": text_bbox[1], "w": text_bbox[2], "h": text_bbox[3]}
+    crop_dict = {
+        "x1": crop_coords[0], "y1": crop_coords[1],
+        "x2": crop_coords[2], "y2": crop_coords[3],
+    }
+    text_bbox_dict = {
+        "x": text_bbox[0], "y": text_bbox[1],
+        "w": text_bbox[2], "h": text_bbox[3],
+    }
         
     return LocalOptionEvidence(
         crop_coords=crop_dict,
@@ -273,13 +292,25 @@ def compute_local_option_evidence(
         radial_histogram=tuple(hist_counts.tolist())
     )
 
-def compute_global_topology_evidence(aligned_image_rgb, median_ref_bgr, rois) -> GlobalTopologyEvidence:
-    import cv2
-    import numpy as np
+def compute_global_topology_evidence(
+    aligned_image_rgb: Image.Image,
+    median_ref_bgr: np.ndarray,
+    rois: list,
+) -> GlobalTopologyEvidence:
     from collections import defaultdict
+
     from matera.vision.adaptive_crop import compute_adaptive_global_crop
-    from matera.vision.mark import UnionFind, min_contour_distance, get_horizontal_extremes
-    from matera.vision.mark import GAUSS_KERNEL, DIFF_THRESHOLD, CLOSE_KERNEL_SIZE, CLOSE_ITERATIONS, MERGE_THRESHOLD, EXTREMES_REJECT_THRESHOLD
+    from matera.vision.mark import (
+        CLOSE_ITERATIONS,
+        CLOSE_KERNEL_SIZE,
+        DIFF_THRESHOLD,
+        EXTREMES_REJECT_THRESHOLD,
+        GAUSS_KERNEL,
+        MERGE_THRESHOLD,
+        UnionFind,
+        get_horizontal_extremes,
+        min_contour_distance,
+    )
     
     question_id = rois[0].question_id if rois else ""
     
@@ -335,14 +366,22 @@ def compute_global_topology_evidence(aligned_image_rgb, median_ref_bgr, rois) ->
         x, y, w_b, h_b = cv2.boundingRect(cnt)
         bbox = {"x": x, "y": y, "w": w_b, "h": h_b}
         if area <= 30:
-            contours_ev.append(GlobalContourEvidence(f"cnt_{i}", float(area), bbox, "REJECTED", "area <= 30"))
+            contours_ev.append(GlobalContourEvidence(
+                f"cnt_{i}", float(area), bbox,
+                "REJECTED", "area <= 30",
+            ))
             continue
         if (h_b > 100 and w_b < 25) or (w_b > 100 and h_b < 25):
-            contours_ev.append(GlobalContourEvidence(f"cnt_{i}", float(area), bbox, "REJECTED", "aspect ratio"))
+            contours_ev.append(GlobalContourEvidence(
+                f"cnt_{i}", float(area), bbox,
+                "REJECTED", "aspect ratio",
+            ))
             continue
         
         valid_cnts.append(cnt)
-        contours_ev.append(GlobalContourEvidence(f"cnt_{i}", float(area), bbox, "ACCEPTED", None))
+        contours_ev.append(GlobalContourEvidence(
+            f"cnt_{i}", float(area), bbox, "ACCEPTED", None,
+        ))
             
     n = len(valid_cnts)
     if n == 0:
@@ -394,7 +433,10 @@ def compute_global_topology_evidence(aligned_image_rgb, median_ref_bgr, rois) ->
             cy_min = min(cy_min, py)
             cx_max = max(cx_max, px)
             cy_max = max(cy_max, py)
-        cluster_bbox = {"x": int(cx_min), "y": int(cy_min), "w": int(cx_max - cx_min), "h": int(cy_max - cy_min)}
+        cluster_bbox = {
+            "x": int(cx_min), "y": int(cy_min),
+            "w": int(cx_max - cx_min), "h": int(cy_max - cy_min),
+        }
         hull_pts = tuple((int(pt[0][0]), int(pt[0][1])) for pt in hull)
         
         inside_options = []
@@ -411,7 +453,9 @@ def compute_global_topology_evidence(aligned_image_rgb, median_ref_bgr, rois) ->
                     
         clusters_ev.append(GlobalClusterEvidence(
             cluster_id=f"cluster_{root}",
-            contour_ids=tuple([f"valid_{i}" for i in range(len(cnt_list))]),
+            contour_ids=tuple(
+                f"cnt_{i}" for i, _ in enumerate(cnt_list)
+            ),
             total_area=float(total_area),
             hull_area=float(hull_area),
             solidity=float(solidity),
@@ -433,24 +477,29 @@ def compute_global_topology_evidence(aligned_image_rgb, median_ref_bgr, rois) ->
         global_marked=frozenset(global_marked)
     )
 
-def extract_page_evidence(
-    aligned_page,
-    profile,
-    layout,
-    reference_image,
+def extract_mark_evidence(
+    aligned_page: AlignedPage,
+    profile: FormProfile,
+    layout: PageLayout,
+    reference_image: Image.Image,
+    *,
     debug_dir: str | None = None,
-    debug_full_mask = None,
+    debug_full_mask: np.ndarray | None = None,
 ) -> PageMarkEvidence:
-    import cv2
-    import numpy as np
-    import pathlib
     from collections import defaultdict
-    import dataclasses
-    
+
     from matera.vision.mark import (
-        LOCAL_PAD, OUTER_RADIUS, NUM_BINS, MIN_INK_PER_BIN, DEGREES_PER_BIN,
-        MARKED_THRESHOLD_DEG, BLANK_THRESHOLD_DEG,
-        get_local_roi_crops, get_text_bounding_box, process_roi_hsv_ai, get_local_roi_crops_hsv
+        BLANK_THRESHOLD_DEG,
+        DIFF_THRESHOLD,
+        GLOBAL_PAD,
+        LOCAL_PAD,
+        MARKED_THRESHOLD_DEG,
+        MIN_INK_PER_BIN,
+        NUM_BINS,
+        OUTER_RADIUS,
+        get_local_roi_crops,
+        get_text_bounding_box,
+        process_roi_hsv_ai,
     )
     
     median_ref_bgr = cv2.cvtColor(np.array(reference_image), cv2.COLOR_RGB2BGR)
@@ -464,6 +513,15 @@ def extract_page_evidence(
     scale_x = orig_bgr.shape[1] / layout.width_px
     scale_y = orig_bgr.shape[0] / layout.height_px
     
+    # Save original bboxes before scaling for RoiEvidence.bbox
+    original_bboxes: dict[tuple[str, str], dict[str, int]] = {}
+    for roi in layout.rois:
+        key = (roi.question_id, roi.option_id)
+        original_bboxes[key] = {
+            "x": roi.bbox.x, "y": roi.bbox.y,
+            "w": roi.bbox.w, "h": roi.bbox.h,
+        }
+
     scaled_rois = []
     for roi in layout.rois:
         new_bbox = dataclasses.replace(
@@ -471,7 +529,7 @@ def extract_page_evidence(
             x=int(roi.bbox.x * scale_x),
             y=int(roi.bbox.y * scale_y),
             w=int(roi.bbox.w * scale_x),
-            h=int(roi.bbox.h * scale_y)
+            h=int(roi.bbox.h * scale_y),
         )
         scaled_rois.append(dataclasses.replace(roi, bbox=new_bbox))
         
@@ -491,8 +549,15 @@ def extract_page_evidence(
                 crop_y1 = gt_evidence.crop["y1"]
                 for cl in gt_evidence.clusters:
                     if cl.hull_area > 1000 and cl.solidity < 0.4:
-                        hull_pts = np.array([[[pt[0] + crop_x1, pt[1] + crop_y1]] for pt in cl.hull_points], dtype=np.int32)
-                        cv2.drawContours(debug_full_mask, [hull_pts], 0, (0, 255, 255), 2)
+                        hull_pts = np.array(
+                            [[[pt[0] + crop_x1, pt[1] + crop_y1]]
+                             for pt in cl.hull_points],
+                            dtype=np.int32,
+                        )
+                        cv2.drawContours(
+                            debug_full_mask, [hull_pts],
+                            0, (0, 255, 255), 2,
+                        )
         else:
             global_topology_evidence_dict[q_id] = None
             
@@ -508,12 +573,22 @@ def extract_page_evidence(
             strategy = roi.mark_strategy_override or strategy_map.get(roi.question_id)
             opt_id = roi.option_id
             
+            orig_bbox = original_bboxes.get(
+                (q_id, opt_id),
+                {"x": roi.bbox.x, "y": roi.bbox.y,
+                 "w": roi.bbox.w, "h": roi.bbox.h},
+            )
+            scaled_bbox = {
+                "x": roi.bbox.x, "y": roi.bbox.y,
+                "w": roi.bbox.w, "h": roi.bbox.h,
+            }
+
             roi_evidences.append(RoiEvidence(
                 question_id=q_id,
                 option_id=opt_id,
-                bbox={"x": roi.bbox.x, "y": roi.bbox.y, "w": roi.bbox.w, "h": roi.bbox.h}, # Wait, the scaled bbox
-                scaled_bbox={"x": roi.bbox.x, "y": roi.bbox.y, "w": roi.bbox.w, "h": roi.bbox.h},
-                strategy=strategy
+                bbox=orig_bbox,
+                scaled_bbox=scaled_bbox,
+                strategy=strategy,
             ))
             
             pred = "AMBIGUOUS"
@@ -526,10 +601,18 @@ def extract_page_evidence(
                     pred = "MARKED"
                     method = "GLOBAL_HULL"
                 else:
-                    target_bgr, mask_raw, crop_coords, ref_gray = get_local_roi_crops(aligned_page.image, median_ref_bgr, roi.bbox, LOCAL_PAD)
+                    target_bgr, mask_raw, crop_coords, ref_gray = (
+                        get_local_roi_crops(
+                            aligned_page.image,
+                            median_ref_bgr, roi.bbox, LOCAL_PAD,
+                        )
+                    )
                     text_bbox = get_text_bounding_box(ref_gray)
                     
-                    local_evidence = compute_local_option_evidence(mask_raw, text_bbox, crop_coords, OUTER_RADIUS, NUM_BINS, MIN_INK_PER_BIN)
+                    local_evidence = compute_local_option_evidence(
+                        mask_raw, text_bbox, crop_coords,
+                        OUTER_RADIUS, NUM_BINS, MIN_INK_PER_BIN,
+                    )
                     
                     if local_evidence.radial_degrees_covered >= MARKED_THRESHOLD_DEG:
                         pred = "MARKED"
@@ -538,7 +621,10 @@ def extract_page_evidence(
                         pred = "BLANK"
                         method = "LOCAL_RADIAL"
                     else:
-                        pred, method = process_roi_hsv_ai(aligned_page, median_ref_bgr, roi, "FALLBACK")
+                        pred, method = process_roi_hsv_ai(
+                            aligned_page, median_ref_bgr,
+                            roi, "FALLBACK",
+                        )
                         hsv_evidence = HsvFallbackEvidence(
                             method_prefix="FALLBACK",
                             hsv_ink_pixels=None,
@@ -573,13 +659,21 @@ def extract_page_evidence(
                 suspicion_notes=()
             ))
             
+        q_def = next(
+            (q for q in profile.questions
+             if q.question_id == q_id), None,
+        )
+        response_type = (
+            q_def.response_type if q_def else "single_select"
+        )
+
         question_evidences.append(QuestionMarkEvidence(
             question_id=q_id,
             strategy=strategy_map.get(q_id, "unknown"),
-            response_type="single",
+            response_type=response_type,
             rois=tuple(roi_evidences),
             global_topology=gt_evidence,
-            option_evidence=tuple(opt_evidences)
+            option_evidence=tuple(opt_evidences),
         ))
         
     return PageMarkEvidence(
@@ -588,22 +682,30 @@ def extract_page_evidence(
         form_version=aligned_page.profile_version,
         alignment=AlignmentEvidence(
             alignment_score=aligned_page.alignment_score,
-            warp_matrix=tuple(tuple(r) for r in aligned_page.warp_matrix.tolist()) if isinstance(aligned_page.warp_matrix, np.ndarray) else (),
+            warp_matrix=(
+                tuple(tuple(r) for r in aligned_page.warp_matrix.tolist())
+                if isinstance(aligned_page.warp_matrix, np.ndarray)
+                else ()
+            ),
             image_size=(orig_bgr.shape[1], orig_bgr.shape[0]),
             layout_size=(layout.width_px, layout.height_px),
             scale_x=scale_x,
-            scale_y=scale_y
+            scale_y=scale_y,
         ),
-        reference=ReferenceEvidence(width=0, height=0, dpi=aligned_page.reference_dpi),
+        reference=ReferenceEvidence(
+            width=reference_image.width,
+            height=reference_image.height,
+            dpi=aligned_page.reference_dpi,
+        ),
         questions=tuple(question_evidences),
         thresholds=MarkThresholdEvidence(
             marked_threshold_deg=MARKED_THRESHOLD_DEG,
             blank_threshold_deg=BLANK_THRESHOLD_DEG,
-            routing_low_threshold=0.2,
-            routing_high_threshold=0.8,
+            routing_low_threshold=None,
+            routing_high_threshold=None,
             local_pad_px=LOCAL_PAD,
             outer_radius_px=OUTER_RADIUS,
-            diff_threshold=0,
-            global_pad_px=0
-        )
+            diff_threshold=DIFF_THRESHOLD,
+            global_pad_px=GLOBAL_PAD,
+        ),
     )

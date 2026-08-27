@@ -131,48 +131,6 @@ def run_v11_global_topology(aligned_image_rgb: Image.Image, median_ref_bgr: np.n
                 
     return set(evidence.global_marked)
 
-        
-    uf = UnionFind(n)
-    
-    for i in range(n):
-        for j in range(i + 1, n):
-            dist = min_contour_distance(valid_cnts[i], valid_cnts[j])
-            if dist <= MERGE_THRESHOLD:
-                l1, r1 = get_horizontal_extremes(valid_cnts[i])
-                l2, r2 = get_horizontal_extremes(valid_cnts[j])
-                dist_left = np.linalg.norm(l1 - l2)
-                dist_right = np.linalg.norm(r1 - r2)
-                
-                if dist_left > EXTREMES_REJECT_THRESHOLD and dist_right > EXTREMES_REJECT_THRESHOLD:
-                    pass
-                else:
-                    uf.union(i, j)
-                    
-    clusters = defaultdict(list)
-    for i in range(n):
-        clusters[uf.find(i)].append(valid_cnts[i])
-        
-    for root, cnt_list in clusters.items():
-        combined_points = np.vstack(cnt_list)
-        total_area = sum([cv2.contourArea(c) for c in cnt_list])
-        
-        hull = cv2.convexHull(combined_points)
-        hull_area = cv2.contourArea(hull)
-        
-        if hull_area > 1000:
-            solidity = total_area / float(hull_area) if hull_area > 0 else 1.0
-            if solidity < 0.4:
-                hull_offset = hull.copy()
-                for pt in hull_offset:
-                    pt[0][0] += crop_x1
-                    pt[0][1] += crop_y1
-                cv2.drawContours(full_mask_bgr, [hull_offset], 0, (0, 255, 255), 2)
-                
-                for opt_id, (cx, cy) in option_centers.items():
-                    if cv2.pointPolygonTest(hull, (cx, cy), False) >= 0:
-                        global_marked.add(opt_id)
-                        
-    return global_marked
 
 def get_local_roi_crops_hsv(aligned_image_rgb: Image.Image, median_ref_bgr: np.ndarray, bbox, pad: int) -> tuple[np.ndarray, np.ndarray, tuple[int, int, int, int]]:
     crop_x1 = max(0, bbox.x - pad)
@@ -246,15 +204,15 @@ def extract_mark_scores(
     aligned_page: AlignedPage,
     profile: FormProfile,
     layout: PageLayout,
-    reference_image,
+    reference_image: Image.Image,
     debug_dir: str | None = None,
-    debug_full_mask = None,
-):
-    from matera.vision.evidence import extract_page_evidence, evidence_to_mark_scores
-    evidence = extract_page_evidence(aligned_page, profile, layout, reference_image, debug_dir, debug_full_mask)
+    debug_full_mask: np.ndarray | None = None,
+) -> list[MarkScore]:
+    from matera.vision.evidence import evidence_to_mark_scores, extract_mark_evidence
+    evidence = extract_mark_evidence(
+        aligned_page, profile, layout, reference_image,
+        debug_dir=debug_dir, debug_full_mask=debug_full_mask,
+    )
     return evidence_to_mark_scores(evidence, debug_dir=debug_dir)
 
 
-
-
-from matera.vision.evidence import GlobalTopologyEvidence, compute_global_topology_evidence

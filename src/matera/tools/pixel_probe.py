@@ -19,7 +19,7 @@ from matera.core.layout import BoundingBox, PageLayout, RoiDef, load_layout_prof
 from matera.core.profile import FormProfile, load_semantic_profile
 from matera.data.extract import extract_pages
 from matera.vision.alignment import align_page
-from matera.vision.evidence import extract_page_evidence, evidence_to_json_dict
+from matera.vision.evidence import extract_mark_evidence, evidence_to_json_dict
 from matera.vision.contracts import AlignmentConfig, MarkScore, RoutingConfig
 from matera.vision.mark import (
     BLANK_THRESHOLD_DEG,
@@ -1179,7 +1179,7 @@ def run_pixel_probe(
     _write_image(page_dir / "page_overlay_all_rois.png", overlay)
 
     try:
-        raw_evidence = extract_page_evidence(
+        raw_evidence = extract_mark_evidence(
             aligned_page=aligned_page,
             profile=semantic_profile,
             layout=layout,
