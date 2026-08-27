@@ -13,20 +13,22 @@ def extract_hog_features(img: np.ndarray) -> np.ndarray:
     """
     img_resized = cv2.resize(img, (24, 24))
     features = hog(
-        img_resized, 
-        orientations=8, 
+        img_resized,
+        orientations=8,
         pixels_per_cell=(8, 8),
-        cells_per_block=(2, 2), 
-        block_norm='L2-Hys',
-        visualize=False, 
-        feature_vector=True
+        cells_per_block=(2, 2),
+        block_norm="L2-Hys",
+        visualize=False,
+        feature_vector=True,
     )
     return features
+
 
 class AmbiguityClassifier:
     """
     A wrapper around sklearn SVC for classifying ambiguous ROIs using HOG features (V17 pipeline).
     """
+
     def __init__(self) -> None:
         self.model = None
         self.is_trained = False
@@ -38,7 +40,7 @@ class AmbiguityClassifier:
         """
         if not self.is_trained or self.model is None:
             raise RuntimeError("Model must be loaded/trained before predicting.")
-        
+
         probs = self.model.predict_proba(X)
         # Assuming class 1 is MARKED
         return [float(p[1]) for p in probs]
@@ -57,10 +59,9 @@ class AmbiguityClassifier:
         in_path = Path(path)
         if not in_path.exists():
             raise FileNotFoundError(f"Model file not found at {in_path}")
-            
+
         instance = cls()
         with open(in_path, "rb") as f:
             instance.model = pickle.load(f)
         instance.is_trained = True
         return instance
-

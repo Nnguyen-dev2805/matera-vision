@@ -41,7 +41,6 @@ def test_route_page_skeleton():
 
     from matera.vision.contracts import MarkScore
 
-
     scores = [
         MarkScore("q1", "o1", 0.1, "circle", "diff", evidence_path=Path("dummy.png")),
     ]
@@ -234,8 +233,6 @@ def test_route_page_fail_fast():
 
     from matera.vision.contracts import MarkScore
 
-
-
     # 1. Missing MarkScore
     scores_missing = [
         MarkScore("q1", "o1", 0.1, "circle", "diff", evidence_path=Path("dummy.png")),
@@ -260,8 +257,6 @@ def test_route_page_fail_fast():
     ]
     with pytest.raises(ValueError, match="Unknown or extra MarkScore found for q1.o3"):
         route_page(mark_scores=scores_unknown, profile=profile, page_number=1)
-
-
 
     # 5. Mark strategy mismatch
     scores_mismatch = [
@@ -296,8 +291,6 @@ def test_route_page_exact_boundaries():
     from pathlib import Path
 
     from matera.vision.contracts import MarkScore
-
-
 
     scores = [
         MarkScore("q1", "o1", 0.2, "circle", "diff", evidence_path=Path("dummy.png")),  # exact low
@@ -342,8 +335,6 @@ def test_route_page_rating_question():
 
     from matera.vision.contracts import MarkScore
 
-
-
     # normal case
     scores = [
         MarkScore("q1", "o1", 0.1, "rating", "diff", evidence_path=Path("dummy.png")),
@@ -382,8 +373,6 @@ def test_route_page_checkbox_multi_select():
     from pathlib import Path
 
     from matera.vision.contracts import MarkScore
-
-
 
     # 3 options selected -> should be fine (max=3)
     scores = [

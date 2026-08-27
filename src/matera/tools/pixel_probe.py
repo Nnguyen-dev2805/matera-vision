@@ -113,6 +113,7 @@ class PixelProbeReport:
     global_topology: dict[str, GlobalTopologyTrace]
     traces: list[Any]
     artifacts: dict[str, str]
+    q14_diagnostics: list[Any] | None = None
     evidence: dict[str, Any] | None = None
 
 
@@ -571,8 +572,8 @@ def _scale_layout_rois(layout: PageLayout, image: Image.Image) -> list[RoiDef]:
     return scaled
 
 
-def _selected_page(pdf_path: Path, page_number: int):
-    for page in extract_pages(pdf_path):
+def _selected_page(pdf_path: Path, page_number: int, dpi: int = 300):
+    for page in extract_pages(pdf_path, dpi=dpi):
         if page.page_number == page_number:
             return page
     raise ValueError(f"PDF {pdf_path} does not contain page {page_number}")
@@ -997,6 +998,59 @@ def _write_index_html(out_dir: Path, report: PixelProbeReport) -> None:
          html += `<div class="card"><h3>Decision Paths</h3>${{traceHtml}}</div>`;
       }}
       
+      // Q14 Checkbox HSV Diagnostic
+      if (qId.includes("Q14") && REPORT_DATA.q14_diagnostics && REPORT_DATA.q14_diagnostics.length > 0) {{
+        html += `<div class="card"><h3>Q14 Checkbox HSV Diagnostic</h3>`;
+        html += `<table><thead><tr>
+          <th>Option</th>
+          <th>Actual</th>
+          <th>Expected</th>
+          <th>Safe Pixels</th>
+          <th>HSV/Diff</th>
+          <th>Reason</th>
+        </tr></thead><tbody>`;
+        
+        REPORT_DATA.q14_diagnostics.forEach(diag => {{
+          let suspHtml = diag.suspicion_notes && diag.suspicion_notes.length ? 
+            `<br><span style="color:var(--warn);font-size:11px;">Suspicion: ${{diag.suspicion_notes.join(', ')}}</span>` : "";
+            
+          html += `<tr>
+            <td><strong>${{diag.option_id}}</strong></td>
+            <td>${{diag.actual_state}}</td>
+            <td>${{diag.expected_state || 'N/A'}}</td>
+            <td>${{diag.safe_mask_pixels}}</td>
+            <td>${{diag.hsv_to_diff_ratio ? diag.hsv_to_diff_ratio.toFixed(2) : 'N/A'}}</td>
+            <td>${{diag.decision_reason}}${{suspHtml}}</td>
+          </tr>`;
+        }});
+        html += `</tbody></table>`;
+        
+        REPORT_DATA.q14_diagnostics.forEach(diag => {{
+          if (diag.artifacts && Object.keys(diag.artifacts).length > 0) {{
+            let sortedSteps = Object.keys(diag.artifacts).sort();
+            let imagesHtml = sortedSteps.map(step => `<img src="${{diag.artifacts[step]}}" data-stage-name="${{step}}" />`).join('');
+            
+            html += `<details style="padding: 8px; border: 1px solid var(--border); margin-top: 8px;">
+              <summary style="cursor:pointer;font-weight:bold;">Artifacts: Option ${{diag.option_id}}</summary>
+              <div class="ink-pipeline-section" style="margin-top:8px;">
+                <div class="step-stepper">
+                  <div class="stepper-image-container">
+                    ${{imagesHtml}}
+                  </div>
+                  <div class="stepper-controls">
+                    <button class="prev-btn">&laquo; Prev</button>
+                    <span class="stepper-stage-name"></span>
+                    <button class="next-btn">Next &raquo;</button>
+                    <button class="compare-btn">Compare</button>
+                  </div>
+                </div>
+              </div>
+            </details>`;
+          }}
+        }});
+        html += `</div>`;
+      }}
+      
       content.innerHTML = html;
       initSteppers();
     }}
@@ -1065,6 +1119,9 @@ def run_pixel_probe(
     reference_path: Path,
     question: str | None = None,
     option: str | None = None,
+    dpi: int = 300,
+    alignment_config: AlignmentConfig | None = None,
+    routing_config: RoutingConfig | None = None,
 ) -> Path:
     semantic_profile = load_semantic_profile(profile_dir / "semantic.json")
     layout_profile = load_layout_profile(profile_dir / "layout.json", semantic=semantic_profile)
@@ -1072,8 +1129,13 @@ def run_pixel_probe(
         raise FileNotFoundError(f"Reference image not found: {reference_path}")
 
     reference_image = Image.open(reference_path).convert("RGB")
-    rendered_page = _selected_page(pdf_path, page_number)
-    align_config = AlignmentConfig(algorithm="orb", transform_model="affine", inlier_threshold=0.05)
+    rendered_page = _selected_page(pdf_path, page_number, dpi=dpi)
+    if alignment_config is None:
+        align_config = AlignmentConfig(
+            algorithm="orb", transform_model="affine", inlier_threshold=0.05
+        )
+    else:
+        align_config = alignment_config
     aligned_page = align_page(rendered_page, reference_image, align_config)
 
     layout = layout_profile.pages[0]
@@ -1126,6 +1188,27 @@ def run_pixel_probe(
         traces.append(trace)
         masks_by_key[(trace.question_id, trace.option_id)] = masks
 
+    q14_diagnostics = []
+    from matera.tools.q14_diagnostic import compute_q14_checkbox_diagnostic
+
+    for trace in traces:
+        if "Q14" in trace.question_id:
+            roi = next(
+                r
+                for r in scaled_rois
+                if r.question_id == trace.question_id and r.option_id == trace.option_id
+            )
+            diag = compute_q14_checkbox_diagnostic(
+                aligned_image=aligned_page.image,
+                reference_image=reference_image,
+                median_ref_bgr=median_ref_bgr,
+                roi=roi,
+                trace=trace,
+                expected_state=None,  # Not available here easily, provided in report phase
+                output_dir=page_dir,
+            )
+            q14_diagnostics.append(diag)
+
     global_topology_traces = {}
 
     # Trace global topology per question for explainability UI
@@ -1135,7 +1218,8 @@ def run_pixel_probe(
         g_trace = trace_global_topology(aligned_page.image, median_ref_bgr, rois, q_id)
         global_topology_traces[q_id] = g_trace
 
-    routing_config = RoutingConfig(low_threshold=0.2, high_threshold=0.6)
+    if routing_config is None:
+        routing_config = RoutingConfig(low_threshold=0.2, high_threshold=0.6)
     if question or option:
         # Routing constraints need the complete page. For filtered microscope runs,
         # report extraction details and leave routing blank rather than inventing context.
@@ -1220,6 +1304,7 @@ def run_pixel_probe(
         global_topology=global_topology_traces,
         traces=traces,
         artifacts={"page_overlay": "page_overlay_all_rois.png"},
+        q14_diagnostics=q14_diagnostics,
         evidence=evidence_dict,
     )
 
@@ -1261,6 +1346,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--question", type=str, default=None, help="Optional question filter, e.g. Q4."
     )
     parser.add_argument("--option", type=str, default=None, help="Optional option filter, e.g. c.")
+    parser.add_argument("--dpi", type=int, default=300, help="DPI to render PDF pages at.")
+    parser.add_argument(
+        "--alignment-json", type=str, default=None, help="JSON string for AlignmentConfig."
+    )
+    parser.add_argument(
+        "--routing-json", type=str, default=None, help="JSON string for RoutingConfig."
+    )
     return parser
 
 
@@ -1268,6 +1360,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     pdf_path = args.pdf or _default_debug_pdf()
+
+    alignment_config = None
+    if args.alignment_json:
+        alignment_config = AlignmentConfig(**json.loads(args.alignment_json))
+
+    routing_config = None
+    if args.routing_json:
+        routing_config = RoutingConfig(**json.loads(args.routing_json))
+
     out_dir = run_pixel_probe(
         pdf_path=pdf_path,
         page_number=args.page,
@@ -1276,6 +1377,9 @@ def main(argv: list[str] | None = None) -> int:
         reference_path=args.reference,
         question=args.question,
         option=args.option,
+        dpi=args.dpi,
+        alignment_config=alignment_config,
+        routing_config=routing_config,
     )
     print(f"Pixel probe written to {out_dir}")
     print(f"Open {out_dir / 'index.html'} to inspect ROI traces.")
@@ -1407,7 +1511,11 @@ def trace_global_topology(
 
     for root, cnt_list in clusters_dict.items():
         combined_points = np.vstack([c[1] for c in cnt_list])
-        total_area = sum([cv2.contourArea(c[1]) for c in cnt_list])
+        total_area = 0.0
+        for _, c in cnt_list:
+            mask = np.zeros_like(mask_raw)
+            cv2.drawContours(mask, [c], -1, 255, thickness=cv2.FILLED)
+            total_area += float(cv2.countNonZero(cv2.bitwise_and(mask_raw, mask)))
 
         hull = cv2.convexHull(combined_points)
         hull_area = cv2.contourArea(hull)

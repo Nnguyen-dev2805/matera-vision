@@ -110,9 +110,7 @@ class ROIAuthorApp:
         self.current_rect = None
 
         if label:
-            self.regions.append(
-                {"label": label, "x": int(x1), "y": int(y1), "w": w, "h": h}
-            )
+            self.regions.append({"label": label, "x": int(x1), "y": int(y1), "w": w, "h": h})
             self.redraw_regions()
 
     def clear_all(self):
@@ -127,9 +125,7 @@ class ROIAuthorApp:
         for r in self.regions:
             x, y, w, h = r["x"], r["y"], r["w"], r["h"]
             color = "blue" if r["label"].startswith("anchor") else "red"
-            self.canvas.create_rectangle(
-                x, y, x + w, y + h, outline=color, width=2, tags="region"
-            )
+            self.canvas.create_rectangle(x, y, x + w, y + h, outline=color, width=2, tags="region")
             self.canvas.create_text(
                 x,
                 y - 10,

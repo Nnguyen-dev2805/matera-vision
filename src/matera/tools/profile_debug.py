@@ -57,7 +57,6 @@ def draw_profile_overlays_on_image(img: Image.Image, page: object) -> None:
         draw_bounding_box(draw, roi.bbox, label, "red", scale_x, scale_y)
 
 
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate debug overlays for a layout profile.")
     parser.add_argument("--semantic", required=True, type=Path, help="Path to semantic.json")
@@ -144,7 +143,8 @@ def main() -> int:
 
             if bg_path:
                 import re
-                m = re.search(r'\d+', bg_path.stem)
+
+                m = re.search(r"\d+", bg_path.stem)
                 if m:
                     num = int(m.group())
                     output_name = f"overlay_page_{num:03d}.png"

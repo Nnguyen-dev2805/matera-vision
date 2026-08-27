@@ -428,7 +428,11 @@ def compute_global_topology_evidence(
     clusters_ev = []
     for root, cnt_list in clusters.items():
         combined_points = np.vstack([c[1] for c in cnt_list])
-        total_area = sum([cv2.contourArea(c[1]) for c in cnt_list])
+        total_area = 0.0
+        for _, c in cnt_list:
+            mask = np.zeros_like(mask_raw)
+            cv2.drawContours(mask, [c], -1, 255, thickness=cv2.FILLED)
+            total_area += float(cv2.countNonZero(cv2.bitwise_and(mask_raw, mask)))
 
         hull = cv2.convexHull(combined_points)
         hull_area = cv2.contourArea(hull)

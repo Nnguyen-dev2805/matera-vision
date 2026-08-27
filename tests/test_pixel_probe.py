@@ -93,7 +93,8 @@ def test_analyze_roi_pixels_trace_is_json_serializable_with_opencv_ints():
 
 def test_new_report_models_serializability():
     import dataclasses
-    from matera.tools.pixel_probe import PixelProbeReport, GlobalTopologyTrace, _json_ready
+
+    from matera.tools.pixel_probe import GlobalTopologyTrace, PixelProbeReport, _json_ready
 
     report = PixelProbeReport(
         report_version=2,
@@ -125,42 +126,44 @@ def test_new_report_models_serializability():
 
 
 def test_trace_global_topology():
-    from matera.tools.pixel_probe import trace_global_topology
     from matera.core.layout import BoundingBox, RoiDef
+    from matera.tools.pixel_probe import trace_global_topology
 
     reference = Image.new("RGB", (140, 140), "white")
     marked = np.full((140, 140, 3), 255, dtype=np.uint8)
     # Draw a contour that should trigger global marking
     cv2.circle(marked, (70, 70), 30, (0, 0, 0), 2)
     aligned = Image.fromarray(marked)
-    
+
     # Needs at least 2 rois
     rois = [
         RoiDef("Q1", "a", BoundingBox(50, 50, 10, 10)),
-        RoiDef("Q1", "b", BoundingBox(80, 50, 10, 10))
+        RoiDef("Q1", "b", BoundingBox(80, 50, 10, 10)),
     ]
-    
+
     trace = trace_global_topology(
-        aligned_image_rgb=aligned,
-        median_ref_bgr=np.array(reference),
-        rois=rois,
-        question_id="Q1"
+        aligned_image_rgb=aligned, median_ref_bgr=np.array(reference), rois=rois, question_id="Q1"
     )
-    
+
     assert trace.question_id == "Q1"
     assert trace.ran is True
     assert isinstance(trace.global_marked, list)
 
 
 def test_generate_question_artifacts(tmp_path):
-    from matera.tools.pixel_probe import generate_question_artifacts, GlobalTopologyTrace, RoiPixelTrace
-    from PIL import Image
     import numpy as np
-    
+    from PIL import Image
+
+    from matera.tools.pixel_probe import (
+        GlobalTopologyTrace,
+        RoiPixelTrace,
+        generate_question_artifacts,
+    )
+
     reference = Image.new("RGB", (140, 140), "white")
     marked = np.full((140, 140, 3), 255, dtype=np.uint8)
     aligned = Image.fromarray(marked)
-    
+
     global_trace = GlobalTopologyTrace(
         question_id="Q1",
         ran=True,
@@ -170,9 +173,9 @@ def test_generate_question_artifacts(tmp_path):
         contours=[],
         clusters=[],
         global_marked=[],
-        artifacts={}
+        artifacts={},
     )
-    
+
     roi_traces = [
         RoiPixelTrace(
             page_number=1,
@@ -194,51 +197,50 @@ def test_generate_question_artifacts(tmp_path):
             radial_ink_pixels=0,
             radial_active_bin_count=0,
             radial_degrees_covered=0.0,
-            radial_histogram=[0]*72,
+            radial_histogram=[0] * 72,
             hsv_ink_pixels=0,
             classifier_probability=None,
-            classifier_available=False
+            classifier_available=False,
         )
     ]
-    
+
     artifacts = generate_question_artifacts(
         aligned_image_rgb=aligned,
         median_ref_bgr=np.array(reference),
         global_trace=global_trace,
         roi_traces=roi_traces,
-        output_dir=tmp_path
+        output_dir=tmp_path,
     )
-    
+
     assert "global" in artifacts
     assert "option_a" in artifacts
-    
+
     assert (tmp_path / artifacts["global"]).exists()
     assert (tmp_path / artifacts["option_a"]).exists()
 
+
 def test_trace_global_topology_includes_crop_expansion():
-    from matera.tools.pixel_probe import trace_global_topology
-    from matera.core.layout import BoundingBox, RoiDef
-    from PIL import Image
-    import numpy as np
     import cv2
+    import numpy as np
+    from PIL import Image
+
+    from matera.core.layout import BoundingBox, RoiDef
+    from matera.tools.pixel_probe import trace_global_topology
 
     reference = Image.new("RGB", (140, 140), "white")
     marked = np.full((140, 140, 3), 255, dtype=np.uint8)
     cv2.circle(marked, (70, 70), 30, (0, 0, 0), 2)
     aligned = Image.fromarray(marked)
-    
+
     rois = [
         RoiDef("Q1", "a", BoundingBox(50, 50, 10, 10)),
-        RoiDef("Q1", "b", BoundingBox(80, 50, 10, 10))
+        RoiDef("Q1", "b", BoundingBox(80, 50, 10, 10)),
     ]
-    
+
     trace = trace_global_topology(
-        aligned_image_rgb=aligned,
-        median_ref_bgr=np.array(reference),
-        rois=rois,
-        question_id="Q1"
+        aligned_image_rgb=aligned, median_ref_bgr=np.array(reference), rois=rois, question_id="Q1"
     )
-    
+
     assert hasattr(trace, "crop_expansion")
     assert isinstance(trace.crop_expansion, dict)
     assert "initial_pad" in trace.crop_expansion

@@ -39,9 +39,8 @@ def get_file_sha256(path: Path) -> str:
     return hasher.hexdigest()
 
 
-def extract_pages(pdf_path: Path) -> Iterator[RenderedPage]:
+def extract_pages(pdf_path: Path, dpi: int = 300) -> Iterator[RenderedPage]:
     """Extracts pages from a PDF and yields RenderedPage objects."""
-    dpi = 300
     try:
         pdf = pdfium.PdfDocument(str(pdf_path))
     except Exception as e:

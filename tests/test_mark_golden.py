@@ -53,15 +53,16 @@ def test_mark_golden_dataset_metrics():
 
         if expected == "1":
             from PIL import ImageDraw
+
             draw = ImageDraw.Draw(src_crop)
             cx = w // 2
             cy = h // 2
             draw.rectangle([cx - w // 4, cy - h // 4, cx + w // 4, cy + h // 4], fill="black")
-            
+
         # We simulate a full page by placing the crop at (x,y) on a white page
         full_page_img = Image.new("RGB", reference_image.size, "white")
         full_page_img.paste(src_crop, (x, y))
-        
+
         aligned_page = AlignedPage(
             page_number=1,
             image=full_page_img,
@@ -69,19 +70,19 @@ def test_mark_golden_dataset_metrics():
             profile_version="v1",
             reference_dpi=300,
             warp_matrix=np.eye(3),
-            alignment_score=1.0
+            alignment_score=1.0,
         )
-        
-        ref_bgr = np.array(reference_image)[:, :, ::-1] # RGB to BGR
+
+        ref_bgr = np.array(reference_image)[:, :, ::-1]  # RGB to BGR
         roi = RoiDef(
             question_id="Q_golden",
             option_id="O_golden",
             bbox=BoundingBox(x, y, w, h),
-            mark_strategy_override=strategy
+            mark_strategy_override=strategy,
         )
-        
+
         label, method = process_roi_hsv_ai(aligned_page, ref_bgr, roi, "matera-pre")
-        
+
         if expected == "1":
             assert label == "MARKED", f"Expected MARKED for {image_file}, got {label}"
         else:

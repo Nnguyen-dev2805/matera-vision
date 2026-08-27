@@ -65,35 +65,50 @@ def run_evaluation(dataset_path: Path, output_path: Path, reference_type: str) -
         if not ref_path.exists() and dataset:
             first_page = list(dataset.keys())[0]
             ref_path = Path("data/pages") / first_page
-            
+
     if not ref_path.exists():
         if not dataset:
-            raise RuntimeError(f"Cannot generate reference: no dataset found at {dataset_path} and {ref_path} is missing.")
-            
+            raise RuntimeError(
+                f"Cannot generate reference: no dataset found at {dataset_path} and {ref_path} is missing."
+            )
+
         first_page = list(dataset.keys())[0]
         anchor_path = Path("data/pages") / first_page
         if not anchor_path.exists():
-            raise RuntimeError(f"Cannot generate reference: anchor image {anchor_path} does not exist.")
-            
+            raise RuntimeError(
+                f"Cannot generate reference: anchor image {anchor_path} does not exist."
+            )
+
         anchor_img = Image.open(anchor_path).convert("RGB")
         aligned_pages = []
-        
+
         if reference_type == "hybrid":
             print(f"Hybrid reference {ref_path} not found. Generating on the fly...")
-            
+
             # Align up to 10 pages against the anchor
-            align_cfg = AlignmentConfig(algorithm="orb", transform_model="affine", inlier_threshold=0.05)
+            align_cfg = AlignmentConfig(
+                algorithm="orb", transform_model="affine", inlier_threshold=0.05
+            )
             for page_name in list(dataset.keys())[:10]:
                 img = Image.open(Path("data/pages") / page_name).convert("RGB")
-                src_page = RenderedPage(image=img, page_number=1, width_px=img.width, height_px=img.height, pdf_width_pt=float(img.width), pdf_height_pt=float(img.height))
+                src_page = RenderedPage(
+                    image=img,
+                    page_number=1,
+                    width_px=img.width,
+                    height_px=img.height,
+                    pdf_width_pt=float(img.width),
+                    pdf_height_pt=float(img.height),
+                )
                 try:
                     result = align_page(src_page, anchor_img, align_cfg)
                     if result:
                         aligned_pages.append(result)
                 except Exception as e:
-                    print(f"Skipping page {page_name} for median reference generation due to alignment error: {e}")
+                    print(
+                        f"Skipping page {page_name} for median reference generation due to alignment error: {e}"
+                    )
                     continue
-                
+
         if aligned_pages:
             reference_img = generate_median_reference(aligned_pages)
             ref_path.parent.mkdir(parents=True, exist_ok=True)
@@ -109,9 +124,7 @@ def run_evaluation(dataset_path: Path, output_path: Path, reference_type: str) -
 
     # Initialize pipeline configs
     alignment_config = AlignmentConfig(
-        algorithm="orb",
-        transform_model="affine",
-        inlier_threshold=0.05
+        algorithm="orb", transform_model="affine", inlier_threshold=0.05
     )
     routing_config = RoutingConfig(low_threshold=0.2, high_threshold=0.6)
 
@@ -132,7 +145,7 @@ def run_evaluation(dataset_path: Path, output_path: Path, reference_type: str) -
             continue
 
         raw_img = Image.open(img_path).convert("RGB")
-        
+
         # Try to parse page number from filename (e.g. "page_5.png")
         match = re.search(r"page_(\d+)", page_image_name)
         page_num = int(match.group(1)) if match else 0
@@ -143,7 +156,7 @@ def run_evaluation(dataset_path: Path, output_path: Path, reference_type: str) -
             height_px=raw_img.height,
             pdf_width_pt=1.0,
             pdf_height_pt=1.0,
-            image=raw_img
+            image=raw_img,
         )
 
         try:
@@ -160,11 +173,16 @@ def run_evaluation(dataset_path: Path, output_path: Path, reference_type: str) -
         try:
             aligned_page = align_page(rendered, reference_img, alignment_config)
             mark_scores = extract_mark_scores(
-                aligned_page, profile, layout, reference_img, debug_dir=str(Path("data/debug/evidence"))
+                aligned_page,
+                profile,
+                layout,
+                reference_img,
+                debug_dir=str(Path("data/debug/evidence")),
             )
             normalized_result = route_page(mark_scores, profile, page_num, routing_config)
         except Exception as e:
             import traceback
+
             traceback.print_exc()
             print(f"Pipeline error on {page_image_name}: {e}")
             continue
@@ -183,7 +201,14 @@ def run_evaluation(dataset_path: Path, output_path: Path, reference_type: str) -
 
         for expected in expected_answers:
             ans = result_map.get((expected.question_id, expected.option_id))
-            roi = next((r for r in layout.rois if r.question_id == expected.question_id and r.option_id == expected.option_id), None)
+            roi = next(
+                (
+                    r
+                    for r in layout.rois
+                    if r.question_id == expected.question_id and r.option_id == expected.option_id
+                ),
+                None,
+            )
 
             resp_type = expected.response_type
             if resp_type not in report.by_response_type:
@@ -242,13 +267,19 @@ def run_evaluation(dataset_path: Path, output_path: Path, reference_type: str) -
             if draw_tasks:
                 import cv2
                 import numpy as np
+
                 debug_img = np.array(aligned_page.image.convert("RGB"))
                 for roi_def, color in draw_tasks:
                     bbox = roi_def.bbox
-                    cv2.rectangle(debug_img, (bbox.x, bbox.y), (bbox.x + bbox.w, bbox.y + bbox.h), color, 2)
-                
+                    cv2.rectangle(
+                        debug_img, (bbox.x, bbox.y), (bbox.x + bbox.w, bbox.y + bbox.h), color, 2
+                    )
+
                 # Save
-                cv2.imwrite(str(Path("data/debug/errors") / page_image_name), cv2.cvtColor(debug_img, cv2.COLOR_RGB2BGR))
+                cv2.imwrite(
+                    str(Path("data/debug/errors") / page_image_name),
+                    cv2.cvtColor(debug_img, cv2.COLOR_RGB2BGR),
+                )
 
     # Save JSON report
     report_dict = {

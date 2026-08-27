@@ -25,7 +25,10 @@ def main() -> None:
         "--reference", type=Path, required=True, help="Path to reference_template.png"
     )
     parser.add_argument(
-        "--semantic", type=Path, default=Path("profiles/semantic.json"), help="Path to semantic profile"
+        "--semantic",
+        type=Path,
+        default=Path("profiles/semantic.json"),
+        help="Path to semantic profile",
     )
     parser.add_argument(
         "--layout", type=Path, default=Path("profiles/layout.json"), help="Path to layout profile"

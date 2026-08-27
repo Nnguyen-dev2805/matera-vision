@@ -80,7 +80,7 @@ def align_page(
 
     # Set RNG seed for deterministic RANSAC results
     cv2.setRNGSeed(42)
-    
+
     warp_matrix = None
     inliers = None
     if config.transform_model == "affine":
