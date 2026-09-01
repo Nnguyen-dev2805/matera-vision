@@ -1,6 +1,10 @@
 import dataclasses
 from dataclasses import dataclass
 
+import cv2
+import numpy as np
+from PIL import Image
+
 
 @dataclass(frozen=True)
 class GlobalCropConfig:
@@ -44,11 +48,6 @@ class GlobalCropResult:
     stop_reason: str
 
 
-import cv2
-import numpy as np
-from PIL import Image
-
-
 def compute_adaptive_global_crop(
     aligned_image_rgb: Image.Image,
     median_ref_bgr: np.ndarray,
@@ -76,7 +75,7 @@ def compute_adaptive_global_crop(
     expanded = False
     stop_reason = None
 
-    from matera.vision.mark import DIFF_THRESHOLD, GAUSS_KERNEL
+    from matera.vision.scoring.thresholds import DIFF_THRESHOLD, GAUSS_KERNEL
 
     img_bgr = cv2.cvtColor(np.array(aligned_image_rgb), cv2.COLOR_RGB2BGR)
     img_gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)

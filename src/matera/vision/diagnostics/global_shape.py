@@ -3,11 +3,11 @@ import dataclasses
 import cv2
 import numpy as np
 
-from matera.vision.global_shape_validator import (
+from matera.vision.diagnostics.global_shape_validator import (
     GlobalShapeValidatorConfig,
     diagnose_global_shape_candidates,
 )
-from matera.vision.mark_thresholds import DIFF_THRESHOLD, GAUSS_KERNEL
+from matera.vision.scoring.thresholds import DIFF_THRESHOLD, GAUSS_KERNEL
 
 
 def attach_global_shape_diagnostics(

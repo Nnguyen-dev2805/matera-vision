@@ -25,9 +25,9 @@ class RenderedPage:
             raise ValueError("width_px must be a positive int")
         if type(self.height_px) is not int or self.height_px <= 0:
             raise ValueError("height_px must be a positive int")
-        if type(self.pdf_width_pt) is not float or not math.isfinite(self.pdf_width_pt) or self.pdf_width_pt <= 0:
+        if type(self.pdf_width_pt) is not float or not math.isfinite(self.pdf_width_pt) or self.pdf_width_pt <= 0:  # noqa: E501
             raise ValueError("pdf dimensions must be positive finite floats")
-        if type(self.pdf_height_pt) is not float or not math.isfinite(self.pdf_height_pt) or self.pdf_height_pt <= 0:
+        if type(self.pdf_height_pt) is not float or not math.isfinite(self.pdf_height_pt) or self.pdf_height_pt <= 0:  # noqa: E501
             raise ValueError("pdf dimensions must be positive finite floats")
         if not isinstance(self.image, Image.Image):
             raise ValueError("image must be a PIL Image")
@@ -60,9 +60,9 @@ class PageArtifact:
             raise ValueError("width_px must be a positive int")
         if type(self.height_px) is not int or self.height_px <= 0:
             raise ValueError("height_px must be a positive int")
-        if type(self.pdf_width_pt) is not float or not math.isfinite(self.pdf_width_pt) or self.pdf_width_pt <= 0:
+        if type(self.pdf_width_pt) is not float or not math.isfinite(self.pdf_width_pt) or self.pdf_width_pt <= 0:  # noqa: E501
             raise ValueError("pdf dimensions must be positive finite floats")
-        if type(self.pdf_height_pt) is not float or not math.isfinite(self.pdf_height_pt) or self.pdf_height_pt <= 0:
+        if type(self.pdf_height_pt) is not float or not math.isfinite(self.pdf_height_pt) or self.pdf_height_pt <= 0:  # noqa: E501
             raise ValueError("pdf dimensions must be positive finite floats")
 
 
@@ -146,7 +146,7 @@ class ExtractionManifest:
                 raise ValueError("All elements in pages must be instances of PageArtifact")
             if p.page_number != expected_page:
                 raise ValueError(
-                    f"Expected page_number {expected_page}, got {p.page_number}. Pages must be contiguous and sorted."
+                    f"Expected page_number {expected_page}, got {p.page_number}. Pages must be contiguous and sorted."  # noqa: E501
                 )
             expected_page += 1
 

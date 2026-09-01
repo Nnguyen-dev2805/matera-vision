@@ -69,7 +69,7 @@ def run_evaluation(dataset_path: Path, output_path: Path, reference_type: str) -
     if not ref_path.exists():
         if not dataset:
             raise RuntimeError(
-                f"Cannot generate reference: no dataset found at {dataset_path} and {ref_path} is missing."
+                f"Cannot generate reference: no dataset found at {dataset_path} and {ref_path} is missing."  # noqa: E501
             )
 
         first_page = list(dataset.keys())[0]
@@ -105,7 +105,7 @@ def run_evaluation(dataset_path: Path, output_path: Path, reference_type: str) -
                         aligned_pages.append(result)
                 except Exception as e:
                     print(
-                        f"Skipping page {page_name} for median reference generation due to alignment error: {e}"
+                        f"Skipping page {page_name} for median reference generation due to alignment error: {e}"  # noqa: E501
                     )
                     continue
 

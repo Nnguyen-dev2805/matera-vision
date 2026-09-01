@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Any
 
 from matera.core.contracts import NormalizedAnswer, NormalizedPageResult
 from matera.evaluation.ground_truth import ExpectedOption
@@ -22,6 +23,14 @@ class OptionEvaluationResult:
     method: str | None
     q14_diagnostic_path: str | None = None
     notes: str = ""
+    vlm_state: str | None = None
+    vlm_raw_state: str | None = None
+    vlm_reason: str | None = None
+    vlm_parse_error: str | None = None
+    vlm_provider_error: str | None = None
+    vlm_crop_path: str | None = None
+    vlm_latency_ms: float | None = None
+    local_realignment: Any | None = None
 
 
 @dataclass
@@ -49,6 +58,7 @@ class PageEvaluationResult:
     review_required: bool
     question_results: list[QuestionEvaluationResult] = field(default_factory=list)
     q14_diagnostics: list[dict] = field(default_factory=list)
+    global_shape_diagnostics: list[dict] = field(default_factory=list)
 
 
 def assign_taxonomy(
@@ -224,6 +234,23 @@ def evaluate_page(
 
             taxonomy = assign_taxonomy(exp.expected_state, actual_state, method, ev)
 
+            vlm_state = ev.vlm.decision if ev and ev.vlm else None
+            vlm_raw_state = ev.vlm.raw_state if ev and ev.vlm else None
+            vlm_reason = ev.vlm.reason if ev and ev.vlm else None
+            vlm_parse_error = ev.vlm.parse_error if ev and ev.vlm else None
+            vlm_provider_error = None
+            vlm_crop_path = None
+            vlm_latency_ms = None
+            
+            if page_evidence:
+                q_ev = next((q for q in page_evidence.questions if q.question_id == q_id), None)
+                if q_ev and q_ev.vlm:
+                    vlm_provider_error = q_ev.vlm.provider_error
+                    vlm_crop_path = q_ev.vlm.crop_path
+                    vlm_latency_ms = q_ev.vlm.latency_ms
+
+            lr = getattr(ev, "local_realignment", None) if ev else None
+
             # In this context we don't know the full debug path yet, that's added by runner
             o_results.append(
                 OptionEvaluationResult(
@@ -240,6 +267,14 @@ def evaluate_page(
                     debug_report_path=None,
                     evidence_path=None,  # TBD by runner if needed
                     method=method,
+                    vlm_state=vlm_state,
+                    vlm_raw_state=vlm_raw_state,
+                    vlm_reason=vlm_reason,
+                    vlm_parse_error=vlm_parse_error,
+                    vlm_provider_error=vlm_provider_error,
+                    vlm_crop_path=vlm_crop_path,
+                    vlm_latency_ms=vlm_latency_ms,
+                    local_realignment=lr,
                 )
             )
 

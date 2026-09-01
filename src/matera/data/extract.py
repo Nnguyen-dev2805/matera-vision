@@ -127,19 +127,19 @@ def main() -> int:
         in_res = in_path.resolve(strict=True)
         out_res = out_path.resolve()
         if in_res == out_res or out_res in in_res.parents:
-            print("Error: Output directory cannot be the same as or a parent of the input file.", file=sys.stderr)
+            print("Error: Output directory cannot be the same as or a parent of the input file.", file=sys.stderr)  # noqa: E501
             return 1
             
         # Protect data/pdfs
         if "data/pdfs" in out_res.as_posix():
-            print("Error: Output directory cannot be inside the source PDFs directory.", file=sys.stderr)
+            print("Error: Output directory cannot be inside the source PDFs directory.", file=sys.stderr)  # noqa: E501
             return 1
     except Exception as e:
         print(f"Error validating paths: {e}", file=sys.stderr)
         return 1
 
     if out_path.exists() and not args.force:
-        print(f"Error: Output directory {out_path} already exists. Use --force to overwrite.", file=sys.stderr)
+        print(f"Error: Output directory {out_path} already exists. Use --force to overwrite.", file=sys.stderr)  # noqa: E501
         return 1
 
     try:
@@ -217,7 +217,7 @@ def main() -> int:
     except ExtractionError as e:
         if tmp_dir.exists():
             shutil.rmtree(tmp_dir)
-        print(f"ExtractionError: {e.error_code} at {e.source_path} (page {e.page_number}): {e.reason}", file=sys.stderr)
+        print(f"ExtractionError: {e.error_code} at {e.source_path} (page {e.page_number}): {e.reason}", file=sys.stderr)  # noqa: E501
         return 1
     except Exception:
         if tmp_dir.exists():

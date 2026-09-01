@@ -16,7 +16,6 @@ if TYPE_CHECKING:
 
 from matera.vision.detectors.global_topology import compute_global_topology_evidence
 from matera.vision.detectors.local import compute_local_option_evidence
-from matera.vision.diagnostics.global_shape import attach_global_shape_diagnostics
 from matera.vision.evidence.models import (
     AlignmentEvidence,
     HsvFallbackEvidence,
@@ -41,15 +40,15 @@ def extract_mark_evidence(
     question_vlm_runtime: Any | None = None,
 ) -> PageMarkEvidence:
 
-    from matera.vision.mark_hsv import (
+    from matera.vision.detectors.hsv import (
         get_local_roi_crops_hsv,
         process_roi_hsv,
     )
-    from matera.vision.mark_radial import (
+    from matera.vision.detectors.local_geometry import (
         get_local_roi_crops,
         get_text_bounding_box,
     )
-    from matera.vision.mark_thresholds import (
+    from matera.vision.scoring.thresholds import (
         BLANK_THRESHOLD_DEG,
         DIFF_THRESHOLD,
         GLOBAL_PAD,
@@ -410,17 +409,6 @@ def extract_mark_evidence(
                 )
             )
 
-        # Compute global shape diagnostics after processing all ROIs
-        gt_evidence = attach_global_shape_diagnostics(
-            q_id=q_id,
-            gt_evidence=gt_evidence,
-            aligned_page=aligned_page,
-            median_ref_bgr=median_ref_bgr,
-            rois=rois,
-            local_evidence_by_option=local_evidence_by_option,
-            marked_threshold_deg=MARKED_THRESHOLD_DEG,
-            blank_threshold_deg=BLANK_THRESHOLD_DEG,
-        )
         global_topology_evidence_dict[q_id] = gt_evidence
 
         # --- VLM Escalation Logic ---
@@ -429,13 +417,7 @@ def extract_mark_evidence(
             o.option_id for o in opt_evidences if o.legacy_prediction == "AMBIGUOUS"
         }
 
-        global_risk_opt_ids = set()
-        if gt_evidence and gt_evidence.shape_diagnostics:
-            for diag in gt_evidence.shape_diagnostics.clusters:
-                if diag.should_call_vlm_later and diag.recommended_action == "CALL_VLM_LATER":
-                    global_risk_opt_ids.update(diag.inside_options)
-
-        escalation_scope = ambiguous_opt_ids | global_risk_opt_ids
+        escalation_scope = ambiguous_opt_ids
 
         if escalation_scope:
             from matera.vision.question_vlm_resolver import resolve_question_with_vlm

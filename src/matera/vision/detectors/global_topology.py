@@ -18,13 +18,13 @@ def compute_global_topology_evidence(
     from collections import defaultdict
 
     from matera.vision.adaptive_crop import compute_adaptive_global_crop
-    from matera.vision.global_area import compute_cluster_metrics
-    from matera.vision.mark_global import (
+    from matera.vision.detectors.global_area import compute_cluster_metrics
+    from matera.vision.detectors.global_geometry import (
         UnionFind,
         get_horizontal_extremes,
         min_contour_distance,
     )
-    from matera.vision.mark_thresholds import (
+    from matera.vision.scoring.thresholds import (
         CLOSE_ITERATIONS,
         CLOSE_KERNEL_SIZE,
         DIFF_THRESHOLD,
@@ -225,3 +225,25 @@ def compute_global_topology_evidence(
         clusters=tuple(clusters_ev),
         global_marked=frozenset(global_marked),
     )
+
+
+def run_v11_global_topology(
+    aligned_image_rgb: Image.Image,
+    median_ref_bgr: np.ndarray,
+    rois: list,
+    full_mask_bgr: np.ndarray,
+) -> set[str]:
+    evidence = compute_global_topology_evidence(aligned_image_rgb, median_ref_bgr, rois)
+
+    # Draw debug hulls as before
+    if evidence.ran and evidence.skip_reason is None:
+        crop_x1 = evidence.crop['x1']
+        crop_y1 = evidence.crop['y1']
+        for cl in evidence.clusters:
+            if cl.hull_area > 1000 and cl.solidity < 0.4:
+                hull_pts = np.array(
+                    [[[pt[0] + crop_x1, pt[1] + crop_y1]] for pt in cl.hull_points], dtype=np.int32
+                )
+                cv2.drawContours(full_mask_bgr, [hull_pts], 0, (0, 255, 255), 2)
+
+    return set(evidence.global_marked)

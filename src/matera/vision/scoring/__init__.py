@@ -1,3 +1,4 @@
+import matera.vision.evidence  # noqa: F401, I001
 from matera.vision.scoring.adapters import evidence_to_mark_scores
 from matera.vision.scoring.extraction import extract_mark_evidence
 

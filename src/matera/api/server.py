@@ -20,12 +20,16 @@ from PIL import Image
 
 from matera.core.layout import load_layout_profile
 from matera.core.profile import load_semantic_profile
+from matera.core.q14_vlm_profile import load_q14_vlm_profile
 from matera.data.extract import extract_pages
 from matera.export.excel import export_to_excel
 from matera.vision.alignment import align_page
 from matera.vision.contracts import AlignmentConfig, RoutingConfig
 from matera.vision.mark import extract_mark_scores
+from matera.vision.q14_vlm_resolver import Q14VlmRuntime
+from matera.vision.question_vlm_resolver import QuestionVlmRuntime
 from matera.vision.routing import route_page
+from matera.vlm.gemini_client import GeminiVlmClient
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("matera-api")
@@ -69,11 +73,12 @@ def _process_single_file_worker(
     semantic_profile = load_semantic_profile(semantic_path)
     layout_profile = load_layout_profile(layout_path)
 
-    ref_img_path = Path("scratch/synthetic_median_reference.png")
+    ref_img_path = profile_dir / "reference_template.png"
     if not ref_img_path.exists():
-        reference_img = Image.new("RGB", (2480, 3508), color=(255, 255, 255))
-    else:
-        reference_img = Image.open(ref_img_path).convert("RGB")
+        logger.error(f"Reference image {ref_img_path} not found in profile directory")
+        return 0, 0, []
+    
+    reference_img = Image.open(ref_img_path).convert("RGB")
 
     alignment_config = AlignmentConfig(
         algorithm="orb",
@@ -82,6 +87,42 @@ def _process_single_file_worker(
     )
     routing_config = RoutingConfig(low_threshold=0.2, high_threshold=0.6)
     page_layout = layout_profile.pages[0]
+
+    q14_profile_path = profile_dir / "q14_vlm.json"
+    q14_runtime = None
+    if q14_profile_path.exists():
+        q14_profile = load_q14_vlm_profile(q14_profile_path)
+        client = None
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if api_key:
+            client = GeminiVlmClient(api_key=api_key)
+        else:
+            logger.warning(
+                "GEMINI_API_KEY not set. Q14/escalated Q1-Q13 marked for review."
+            )
+
+        q14_runtime = Q14VlmRuntime(
+            profile=q14_profile,
+            client=client,
+            model=os.environ.get("GEMINI_MODEL", "gemini-3.6-flash"),
+            timeout_s=60.0,
+        )
+    else:
+        logger.warning(
+            f"Q14 VLM profile not found at {q14_profile_path}. Q14 will be marked for review."
+        )
+
+    question_vlm_runtime = QuestionVlmRuntime(
+        client=client
+        if "client" in locals()
+        else (
+            GeminiVlmClient(api_key=os.environ["GEMINI_API_KEY"])
+            if os.environ.get("GEMINI_API_KEY")
+            else None
+        ),
+        model=os.environ.get("GEMINI_MODEL", "gemini-3.6-flash"),
+        timeout_s=60.0,
+    )
 
     rel_name = pdf_path.name
     mp_queue.put(
@@ -114,7 +155,12 @@ def _process_single_file_worker(
         try:
             aligned_page = align_page(page, reference_img, alignment_config)
             mark_scores = extract_mark_scores(
-                aligned_page, semantic_profile, page_layout, reference_img
+                aligned_page,
+                semantic_profile,
+                page_layout,
+                reference_img,
+                q14_vlm_runtime=q14_runtime,
+                question_vlm_runtime=question_vlm_runtime,
             )
             result = route_page(mark_scores, semantic_profile, page.page_number, routing_config)
 
@@ -158,6 +204,8 @@ def _process_single_file_worker(
                     page_layout,
                     reference_img,
                     debug_full_mask=debug_full_mask,
+                    q14_vlm_runtime=q14_runtime,
+                    question_vlm_runtime=question_vlm_runtime,
                 )
                 overlay = cv2.addWeighted(orig_bgr, 0.6, debug_full_mask, 0.4, 0)
 
@@ -236,7 +284,7 @@ def _process_single_file_worker(
                     "elapsed_seconds": t_elapsed,
                     "percent": page_percent,
                     "debug_images": debug_images,
-                    "message": f"[{file_idx}/{total_files}] {rel_name} - Page {page.page_number}: {selected_count} marks, {review_count} reviews ({t_elapsed}s)",
+                    "message": f"[{file_idx}/{total_files}] {rel_name} - Page {page.page_number}: {selected_count} marks, {review_count} reviews ({t_elapsed}s)",  # noqa: E501
                 }
             )
 
@@ -279,7 +327,7 @@ def run_pipeline_on_files(
             {
                 "type": "init",
                 "total_files": total_files,
-                "message": f"Found {total_files} PDF files. Initializing Multiprocessing V17 Engine...",
+                "message": f"Found {total_files} PDF files. Initializing Multiprocessing V17 Engine...",  # noqa: E501
                 "percent": 0,
             }
         )

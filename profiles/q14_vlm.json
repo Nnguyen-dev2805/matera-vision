@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "question_id": "Q14",
+  "crop_box": {
+    "x": 80,
+    "y": 3170,
+    "w": 2285,
+    "h": 197
+  },
+  "option_order": [
+    "1",
+    "2",
+    "3",
+    "4"
+  ],
+  "option_mapping": {
+    "1": "left column, top row",
+    "2": "right column, top row",
+    "3": "left column, bottom row",
+    "4": "right column, bottom row"
+  },
+  "prompt_version": "q14_vlm_v1"
+}
