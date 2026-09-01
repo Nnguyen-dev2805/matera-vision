@@ -5,6 +5,8 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.env
+.env.*
 
 # Python
 __pycache__/
@@ -62,5 +64,18 @@ scratch/
 # Worktrees
 .worktrees/
 
-
 docs/
+
+# Debug Lab — local workbench, not tracked in git
+debug_lab/
+
+# Generated evaluation output
+evaluation/
+
+# Trained model artifacts
+models/**/*.pkl
+models/**/*.joblib
+models/**/*.onnx
+models/**/*.pt
+models/**/*.pth
+

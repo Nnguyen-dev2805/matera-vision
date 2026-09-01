@@ -31,7 +31,6 @@ def route_page(
     provided_options = set()
     score_by_key = {}
     for ms in mark_scores:
-
         key = (ms.question_id, ms.option_id)
         if key not in profile_options:
             raise ValueError(
@@ -46,7 +45,7 @@ def route_page(
                 f"Mark strategy mismatch for {ms.question_id}.{ms.option_id}: "
                 f"expected {q_def.mark_strategy}, got {ms.strategy}"
             )
-        
+
         provided_options.add(key)
         score_by_key[key] = ms
 
@@ -70,8 +69,8 @@ def route_page(
             elif ms.score < config.low_threshold:
                 original_selections[ms.option_id] = False
             else:
-                original_selections[ms.option_id] = None # Needs Review
-                        
+                original_selections[ms.option_id] = None  # Needs Review
+
             final_selections[ms.option_id] = original_selections[ms.option_id]
 
         num_selected = sum(1 for v in original_selections.values() if v is True)

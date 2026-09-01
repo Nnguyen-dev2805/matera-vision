@@ -20,12 +20,16 @@ from PIL import Image
 
 from matera.core.layout import load_layout_profile
 from matera.core.profile import load_semantic_profile
+from matera.core.q14_vlm_profile import load_q14_vlm_profile
 from matera.data.extract import extract_pages
 from matera.export.excel import export_to_excel
 from matera.vision.alignment import align_page
 from matera.vision.contracts import AlignmentConfig, RoutingConfig
 from matera.vision.mark import extract_mark_scores
+from matera.vision.q14_vlm_resolver import Q14VlmRuntime
+from matera.vision.question_vlm_resolver import QuestionVlmRuntime
 from matera.vision.routing import route_page
+from matera.vlm.gemini_client import GeminiVlmClient
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("matera-api")
@@ -49,7 +53,6 @@ os.makedirs(".tmp_uploads", exist_ok=True)
 app.mount("/api/debug-images", StaticFiles(directory=".tmp_uploads"), name="debug-images")
 
 
-
 def _process_single_file_worker(
     pdf_path: Path,
     file_idx: int,
@@ -70,11 +73,12 @@ def _process_single_file_worker(
     semantic_profile = load_semantic_profile(semantic_path)
     layout_profile = load_layout_profile(layout_path)
 
-    ref_img_path = Path("scratch/synthetic_median_reference.png")
+    ref_img_path = profile_dir / "reference_template.png"
     if not ref_img_path.exists():
-        reference_img = Image.new("RGB", (2480, 3508), color=(255, 255, 255))
-    else:
-        reference_img = Image.open(ref_img_path).convert("RGB")
+        logger.error(f"Reference image {ref_img_path} not found in profile directory")
+        return 0, 0, []
+    
+    reference_img = Image.open(ref_img_path).convert("RGB")
 
     alignment_config = AlignmentConfig(
         algorithm="orb",
@@ -84,15 +88,53 @@ def _process_single_file_worker(
     routing_config = RoutingConfig(low_threshold=0.2, high_threshold=0.6)
     page_layout = layout_profile.pages[0]
 
+    q14_profile_path = profile_dir / "q14_vlm.json"
+    q14_runtime = None
+    if q14_profile_path.exists():
+        q14_profile = load_q14_vlm_profile(q14_profile_path)
+        client = None
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if api_key:
+            client = GeminiVlmClient(api_key=api_key)
+        else:
+            logger.warning(
+                "GEMINI_API_KEY not set. Q14/escalated Q1-Q13 marked for review."
+            )
+
+        q14_runtime = Q14VlmRuntime(
+            profile=q14_profile,
+            client=client,
+            model=os.environ.get("GEMINI_MODEL", "gemini-3.6-flash"),
+            timeout_s=60.0,
+        )
+    else:
+        logger.warning(
+            f"Q14 VLM profile not found at {q14_profile_path}. Q14 will be marked for review."
+        )
+
+    question_vlm_runtime = QuestionVlmRuntime(
+        client=client
+        if "client" in locals()
+        else (
+            GeminiVlmClient(api_key=os.environ["GEMINI_API_KEY"])
+            if os.environ.get("GEMINI_API_KEY")
+            else None
+        ),
+        model=os.environ.get("GEMINI_MODEL", "gemini-3.6-flash"),
+        timeout_s=60.0,
+    )
+
     rel_name = pdf_path.name
-    mp_queue.put({
-        "type": "file_start",
-        "file_index": file_idx,
-        "total_files": total_files,
-        "file_name": rel_name,
-        "message": f"Loading file [{file_idx}/{total_files}]: {rel_name}",
-        "percent": int(((file_idx - 1) / total_files) * 100),
-    })
+    mp_queue.put(
+        {
+            "type": "file_start",
+            "file_index": file_idx,
+            "total_files": total_files,
+            "file_name": rel_name,
+            "message": f"Loading file [{file_idx}/{total_files}]: {rel_name}",
+            "percent": int(((file_idx - 1) / total_files) * 100),
+        }
+    )
 
     file_results = []
     total_review_count = 0
@@ -113,14 +155,20 @@ def _process_single_file_worker(
         try:
             aligned_page = align_page(page, reference_img, alignment_config)
             mark_scores = extract_mark_scores(
-                aligned_page, semantic_profile, page_layout, reference_img
+                aligned_page,
+                semantic_profile,
+                page_layout,
+                reference_img,
+                q14_vlm_runtime=q14_runtime,
+                question_vlm_runtime=question_vlm_runtime,
             )
             result = route_page(mark_scores, semantic_profile, page.page_number, routing_config)
-            
+
             import dataclasses
+
             result = dataclasses.replace(result, file_name=rel_name)
             file_results.append(result)
-            
+
             selected_answers = [
                 f"{a.answer_key.question_id}_{a.answer_key.option_id}"
                 for a in result.answers
@@ -131,15 +179,15 @@ def _process_single_file_worker(
             review_count = len(result.review_tasks)
             total_review_count += review_count
             t_elapsed = round(time.time() - t_start, 2)
-            
+
             debug_images = []
             if debug:
                 import cv2
                 import numpy as np
-                
+
                 # 1. Original
                 orig_bgr = cv2.cvtColor(np.array(aligned_page.image), cv2.COLOR_RGB2BGR)
-                
+
                 # 2. Ink Mask
                 ref_bgr = cv2.cvtColor(np.array(reference_img), cv2.COLOR_RGB2BGR)
                 orig_gray = cv2.cvtColor(orig_bgr, cv2.COLOR_BGR2GRAY)
@@ -147,30 +195,36 @@ def _process_single_file_worker(
                 diff = cv2.absdiff(ref_gray, orig_gray)
                 blurred = cv2.GaussianBlur(diff, (3, 3), 0)
                 _, ink_mask = cv2.threshold(blurred, 30, 255, cv2.THRESH_BINARY)
-                
+
                 # 3. AI Overlay
                 debug_full_mask = np.zeros_like(np.array(aligned_page.image))
                 scores = extract_mark_scores(
-                    aligned_page, semantic_profile, page_layout, reference_img,
-                    debug_full_mask=debug_full_mask
+                    aligned_page,
+                    semantic_profile,
+                    page_layout,
+                    reference_img,
+                    debug_full_mask=debug_full_mask,
+                    q14_vlm_runtime=q14_runtime,
+                    question_vlm_runtime=question_vlm_runtime,
                 )
                 overlay = cv2.addWeighted(orig_bgr, 0.6, debug_full_mask, 0.4, 0)
-                
+
                 roi_map = {(r.question_id, r.option_id): r for r in page_layout.rois}
                 for s in scores:
                     roi = roi_map.get((s.question_id, s.option_id))
-                    if not roi: continue
+                    if not roi:
+                        continue
                     x, y, w, h = roi.bbox.x, roi.bbox.y, roi.bbox.w, roi.bbox.h
-                    
+
                     if s.score == 1.0:
-                        color = (0, 255, 0) # Green (BGR)
+                        color = (0, 255, 0)  # Green (BGR)
                     elif s.score == 0.0:
-                        color = (0, 0, 255) # Red (BGR)
+                        color = (0, 0, 255)  # Red (BGR)
                     else:
-                        color = (0, 255, 255) # Yellow (BGR)
-                        
-                    cv2.rectangle(overlay, (x, y), (x+w, y+h), color, 2)
-                    
+                        color = (0, 255, 255)  # Yellow (BGR)
+
+                    cv2.rectangle(overlay, (x, y), (x + w, y + h), color, 2)
+
                     method_str = s.method.upper()
                     if "GLOBAL" in method_str:
                         label = "G"
@@ -180,56 +234,70 @@ def _process_single_file_worker(
                         label = "A"
                     else:
                         label = "?"
-                        
-                    cv2.putText(overlay, label, (x, max(10, y - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2, cv2.LINE_AA)
-                
+
+                    cv2.putText(
+                        overlay,
+                        label,
+                        (x, max(10, y - 5)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        color,
+                        2,
+                        cv2.LINE_AA,
+                    )
+
                 debug_dir = Path(".tmp_uploads") / session_id / "debug"
                 debug_dir.mkdir(parents=True, exist_ok=True)
-                
+
                 # Use safe filename without unicode to avoid cv2.imwrite issues on Windows
                 base_name = f"file_{file_idx}_page_{page.page_number}"
-                
+
                 f_orig = f"{base_name}_1_original.png"
                 f_ink = f"{base_name}_2_ink.png"
                 f_overlay = f"{base_name}_3_overlay.png"
-                
+
                 # Use cv2.imencode + tofile for proper unicode path support (or just safe paths)
                 # Since we use safe ascii paths, cv2.imwrite works fine.
                 cv2.imwrite(str(debug_dir / f_orig), orig_bgr)
                 cv2.imwrite(str(debug_dir / f_ink), ink_mask)
                 cv2.imwrite(str(debug_dir / f_overlay), overlay)
-                
+
                 debug_images = [
                     f"/api/debug-images/{session_id}/debug/{f_orig}",
                     f"/api/debug-images/{session_id}/debug/{f_ink}",
-                    f"/api/debug-images/{session_id}/debug/{f_overlay}"
+                    f"/api/debug-images/{session_id}/debug/{f_overlay}",
                 ]
 
-            mp_queue.put({
-                "type": "page_done",
-                "file_index": file_idx,
-                "total_files": total_files,
-                "file_name": rel_name,
-                "page_number": page.page_number,
-                "total_pages_in_file": num_pages,
-                "selected_count": selected_count,
-                "selected_summary": ", ".join(selected_answers[:8]) + ("..." if selected_count > 8 else ""),
-                "review_count": review_count,
-                "status": "needs_review" if review_count > 0 else "resolved",
-                "elapsed_seconds": t_elapsed,
-                "percent": page_percent,
-                "debug_images": debug_images,
-                "message": f"[{file_idx}/{total_files}] {rel_name} - Page {page.page_number}: {selected_count} marks, {review_count} reviews ({t_elapsed}s)",
-            })
+            mp_queue.put(
+                {
+                    "type": "page_done",
+                    "file_index": file_idx,
+                    "total_files": total_files,
+                    "file_name": rel_name,
+                    "page_number": page.page_number,
+                    "total_pages_in_file": num_pages,
+                    "selected_count": selected_count,
+                    "selected_summary": ", ".join(selected_answers[:8])
+                    + ("..." if selected_count > 8 else ""),
+                    "review_count": review_count,
+                    "status": "needs_review" if review_count > 0 else "resolved",
+                    "elapsed_seconds": t_elapsed,
+                    "percent": page_percent,
+                    "debug_images": debug_images,
+                    "message": f"[{file_idx}/{total_files}] {rel_name} - Page {page.page_number}: {selected_count} marks, {review_count} reviews ({t_elapsed}s)",  # noqa: E501
+                }
+            )
 
         except Exception as ex:
             logger.error(f"Error processing page {page.page_number} of file {rel_name}: {ex}")
-            mp_queue.put({
-                "type": "page_error",
-                "file_name": rel_name,
-                "page_number": page.page_number,
-                "error": str(ex),
-            })
+            mp_queue.put(
+                {
+                    "type": "page_error",
+                    "file_name": rel_name,
+                    "page_number": page.page_number,
+                    "error": str(ex),
+                }
+            )
 
     return total_selected_count, total_review_count, file_results
 
@@ -255,12 +323,14 @@ def run_pipeline_on_files(
     all_page_results = []
 
     if progress_callback:
-        progress_callback({
-            "type": "init",
-            "total_files": total_files,
-            "message": f"Found {total_files} PDF files. Initializing Multiprocessing V17 Engine...",
-            "percent": 0,
-        })
+        progress_callback(
+            {
+                "type": "init",
+                "total_files": total_files,
+                "message": f"Found {total_files} PDF files. Initializing Multiprocessing V17 Engine...",  # noqa: E501
+                "percent": 0,
+            }
+        )
 
     manager = multiprocessing.Manager()
     mp_queue = manager.Queue()
@@ -319,22 +389,24 @@ def run_pipeline_on_files(
     stats = {
         "total_files": total_files,
         "total_pages": total_pages_count,
-        "total_answers": len(all_page_results) * sum(len(q.options) for q in semantic_profile.questions),
+        "total_answers": len(all_page_results)
+        * sum(len(q.options) for q in semantic_profile.questions),
         "needs_review_count": total_review_count,
         "excel_path": str(output_excel_path),
         "excel_file_name": output_excel_path.name,
     }
 
     if progress_callback:
-        progress_callback({
-            "type": "complete",
-            "percent": 100,
-            "message": f"Processing complete. Extracted {total_pages_count} pages to Excel.",
-            "stats": stats,
-        })
+        progress_callback(
+            {
+                "type": "complete",
+                "percent": 100,
+                "message": f"Processing complete. Extracted {total_pages_count} pages to Excel.",
+                "stats": stats,
+            }
+        )
 
     return stats
-
 
 
 @app.get("/api/health")
@@ -366,7 +438,7 @@ async def create_upload_session(
     return {
         "session_id": session_id,
         "total_files": len(saved_files),
-        "files": [f.name for f in saved_files]
+        "files": [f.name for f in saved_files],
     }
 
 
@@ -379,6 +451,7 @@ async def process_stream(
     debug: bool = Query(False, description="Enable visual debug output"),
 ):
     """Server-Sent Events (SSE) endpoint to stream real-time progress to frontend."""
+
     async def event_generator() -> AsyncGenerator[str, None]:
         # Determine source folder
         if session_id:
@@ -386,27 +459,26 @@ async def process_stream(
         elif folder_path:
             folder = Path(folder_path)
         else:
-            err_data = json.dumps({"type": "error", "message": "No folder or session specified"}, ensure_ascii=False)
+            err_data = json.dumps(
+                {"type": "error", "message": "No folder or session specified"}, ensure_ascii=False
+            )
             yield f"data: {err_data}\n\n"
             return
 
         if not folder.exists() or not folder.is_dir():
-            err_data = json.dumps({
-                "type": "error",
-                "message": f"Folder not found: {folder}"
-            }, ensure_ascii=False)
+            err_data = json.dumps(
+                {"type": "error", "message": f"Folder not found: {folder}"}, ensure_ascii=False
+            )
             yield f"data: {err_data}\n\n"
             return
 
-        pdf_files = sorted(
-            list(set(list(folder.rglob("*.pdf")) + list(folder.rglob("*.PDF"))))
-        )
+        pdf_files = sorted(list(set(list(folder.rglob("*.pdf")) + list(folder.rglob("*.PDF")))))
 
         if not pdf_files:
-            err_data = json.dumps({
-                "type": "error",
-                "message": f"No PDF files found in folder: {folder}"
-            }, ensure_ascii=False)
+            err_data = json.dumps(
+                {"type": "error", "message": f"No PDF files found in folder: {folder}"},
+                ensure_ascii=False,
+            )
             yield f"data: {err_data}\n\n"
             return
 
@@ -430,7 +502,7 @@ async def process_stream(
                 progress_callback=queue_callback,
                 session_id=session_id or "default",
                 debug=debug,
-            )
+            ),
         )
 
         while not future.done() or not queue.empty():
@@ -444,10 +516,10 @@ async def process_stream(
             future.result()
         except Exception as e:
             logger.exception("Pipeline error during stream")
-            err_data = json.dumps({
-                "type": "error",
-                "message": f"Error during processing: {str(e)}"
-            }, ensure_ascii=False)
+            err_data = json.dumps(
+                {"type": "error", "message": f"Error during processing: {str(e)}"},
+                ensure_ascii=False,
+            )
             yield f"data: {err_data}\n\n"
 
     return StreamingResponse(
@@ -457,7 +529,7 @@ async def process_stream(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
-        }
+        },
     )
 
 
@@ -465,20 +537,20 @@ async def process_stream(
 def download_excel(file_path: str = Query(..., description="Path to excel file")):
     """Download generated Excel result file."""
     path = Path(file_path).resolve()
-    
+
     workspace_dir = Path.cwd().resolve()
     data_dir = (workspace_dir / "data").resolve()
     tmp_dir = (workspace_dir / ".tmp_uploads").resolve()
-    
+
     if not (path.is_relative_to(data_dir) or path.is_relative_to(tmp_dir)):
         raise HTTPException(status_code=403, detail="Access denied.")
-        
+
     if not path.exists():
         raise HTTPException(status_code=404, detail="File does not exist.")
     return FileResponse(
         path=path,
         filename=path.name,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
 
@@ -486,4 +558,5 @@ def download_excel(file_path: str = Query(..., description="Path to excel file")
 ui_dir = Path("frontend")
 if ui_dir.exists():
     from fastapi.staticfiles import StaticFiles
+
     app.mount("/", StaticFiles(directory=str(ui_dir), html=True), name="ui")
